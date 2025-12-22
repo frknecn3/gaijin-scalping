@@ -1,0 +1,13 @@
+<!doctype html>
+<html>
+  <body style="font-family: monospace">
+    <h3>Gaijin Spread</h3>
+    <pre id="out">Waiting…</pre>
+    <script>
+      chrome.storage.local.get("spreads", d => {
+        document.getElementById("out").textContent =
+          JSON.stringify(d.spreads || {}, null, 2);
+      });
+    </script>
+  </body>
+</html>
