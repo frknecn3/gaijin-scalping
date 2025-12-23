@@ -1,0 +1,140 @@
+[
+    {
+        "appid": 1067,
+        "hash_name": "id100138_esport_ii_trophy",
+        "asset_class": [
+            {
+                "name": "__itemdefid",
+                "value": "100138"
+            }
+        ],
+        "name": "'eSport II' trophy",
+        "commodity": true,
+        "icon": "https://static-ggc.gaijin.net/items_camouflage_trophy/items_box_esport_II.png",
+        "price": 0.901,
+        "buy_price": 0.82,
+        "depth": 667,
+        "buy_depth": 542,
+        "tags": [
+            "type:chest",
+            "quality:common",
+            "countryDenyPurchase:be_kr",
+            "eventName:esport_trophy_2"
+        ],
+        "color": "AFAFA1",
+        "profit": 0.061000000000000054,
+        "liquidityScore": 805.4216315651149,
+        "last2Volume": 156,
+        "momentum": 1.4800759013282732
+    },
+    {
+        "appid": 1067,
+        "hash_name": "id100142_esport_iii_trophy",
+        "asset_class": [
+            {
+                "name": "__itemdefid",
+                "value": "100142"
+            }
+        ],
+        "name": "'eSport III' trophy",
+        "commodity": true,
+        "icon": "https://static-ggc.gaijin.net/items_camouflage_trophy/items_box_esport_III.png",
+        "price": 0.48449999999999993,
+        "buy_price": 0.4,
+        "depth": 851,
+        "buy_depth": 221,
+        "tags": [
+            "type:chest",
+            "quality:common",
+            "countryDenyPurchase:be_kr",
+            "eventName:esport_trophy_3"
+        ],
+        "color": "AFAFA1",
+        "profit": 0.06449999999999989,
+        "liquidityScore": 1067.2120065045913,
+        "last2Volume": 209,
+        "momentum": 1.3397435897435896
+    },
+    {
+        "appid": 1067,
+        "hash_name": "Advancing Storm' trophy I",
+        "asset_class": [
+            {
+                "name": "__itemdefid",
+                "value": "100101"
+            }
+        ],
+        "name": "'Advancing Storm' trophy",
+        "commodity": true,
+        "icon": "https://static-ggc.gaijin.net/items_camouflage_trophy/items_box18_1_77.png",
+        "price": 0.6885,
+        "buy_price": 0.59,
+        "depth": 573,
+        "buy_depth": 1231,
+        "tags": [
+            "type:chest",
+            "quality:common",
+            "countryDenyPurchase:be_kr",
+            "eventName:camo_trophy_1_77"
+        ],
+        "color": "AFAFA1",
+        "profit": 0.07850000000000001,
+        "liquidityScore": 397.2376307081425,
+        "last2Volume": 74,
+        "momentum": 1.2758620689655173
+    },
+    {
+        "appid": 1067,
+        "hash_name": "'The Valkyries' trophy I",
+        "asset_class": [
+            {
+                "name": "__itemdefid",
+                "value": "100104"
+            }
+        ],
+        "name": "'Valkyrie' trophy",
+        "commodity": true,
+        "icon": "https://static-ggc.gaijin.net/items_camouflage_trophy/items_box_23_1_81.png",
+        "price": 0.561,
+        "buy_price": 0.44,
+        "depth": 488,
+        "buy_depth": 149,
+        "tags": [
+            "type:chest",
+            "quality:common",
+            "countryDenyPurchase:be_kr",
+            "eventName:camo_trophy_1_81"
+        ],
+        "color": "AFAFA1",
+        "profit": 0.10100000000000003,
+        "liquidityScore": 536.8284227362213,
+        "last2Volume": 103,
+        "momentum": 1.446629213483146
+    },
+    {
+        "appid": 1067,
+        "hash_name": "id217023_profile_icon_winter_pilot",
+        "asset_class": [
+            {
+                "name": "__itemdefid",
+                "value": "217023"
+            }
+        ],
+        "name": "Profile Icon \"Winter pilot\"",
+        "commodity": true,
+        "icon": "https://static-ggc.gaijin.net/avatars/cardicon_newyear_23.png",
+        "price": 0.4675,
+        "buy_price": 0.31,
+        "depth": 310,
+        "buy_depth": 82,
+        "tags": [
+            "type:profile_icon",
+            "quality:common"
+        ],
+        "color": "AFAFA1",
+        "profit": 0.1375,
+        "liquidityScore": 247.26009325196122,
+        "last2Volume": 46,
+        "momentum": 0.6571428571428571
+    }
+]

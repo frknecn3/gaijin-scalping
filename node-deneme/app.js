@@ -58,7 +58,6 @@ try {
         skip += COUNT;
     }
 
-    const PRICE = 1
 
     allItems = allItems
         .map((item) => {
@@ -73,8 +72,7 @@ try {
                 profit: (newPrice - 0.01) - (newSellPrice + 0.01)
             }
         })
-        .filter((item) => item.buy_price <= PRICE && item.buy_depth + item.depth > 10 && item.profit > 0.05 && !item.tags.includes("type:key") && item.buy_depth > 0 && item.buy_price > 0)
-        
+
 
     console.log("Tüm itemlar: ", allItems.length)
 
@@ -95,7 +93,7 @@ try {
             });
 
             // rate-limit safety
-            await sleep(10);
+            await sleep(1);
 
         } catch (err) {
             console.log("HATA:", item.name);
