@@ -5,7 +5,7 @@ dotenv.config();
 
 // ================= CONFIG =================
 
-const MIN_PROFIT = 0.08;     // %8 net kâr
+const MIN_PROFIT = 0.03;     // %8 net kâr
 const FEE = 0.15;            // %15 Gaijin komisyonu
 const COOLDOWN = 60_000;     // 60 saniye
 const DRY_RUN = true;        // true = sadece log
@@ -50,7 +50,7 @@ const checkStandingOrders = async () => {
 
             console.log("unnecessarily high:", unnecessarilyHigh, "ourbid: ", item.localPrice / 10000, "2ndhighest: ", market.response.BUY[1][0] / 10000)
 
-            const unprofitable = lowestSell * 0.85 - highestBid < 0.05
+            const unprofitable = lowestSell * 0.85 - highestBid < MIN_PROFIT
 
             console.log("profit ölçer:", lowestSell * 0.85, highestBid, unprofitable)
 
@@ -60,7 +60,7 @@ const checkStandingOrders = async () => {
             }
 
 
-            if (userBid < highestBid && (lowestSell * 0.85 - highestBid) > 0.05) {
+            if (userBid < highestBid && (lowestSell * 0.85 - highestBid) > MIN_PROFIT) {
 
                 const res1 = await marketPost({
                     action: "cancel_order",
@@ -93,7 +93,7 @@ const checkStandingOrders = async () => {
             else console.log("EN YÜKSEK BİD BİZİM")
         }
         else {
-            const unprofitable = lowestSell * 0.85 - highestBid < 0.05
+            const unprofitable = lowestSell * 0.85 - highestBid < MIN_PROFIT
 
             const inv = await getInvAssets();
             const normalID = item.market.split('id')[1].split('_')[0];
@@ -141,7 +141,7 @@ const checkStandingOrders = async () => {
                     seller_should_get: sellerShouldGet((lowestSell - 0.01) * 10000),
                     agree_stamp: Date.now(),
                     market_name: item.market,
-                    privateMode: true,
+                    privateMode: false,
                 })
 
                 console.log("1res:", res)
@@ -183,4 +183,30 @@ const checkStandingOrders = async () => {
 
 // checkStandingOrders();
 
-setInterval(checkStandingOrders, 10000)
+function scheduleNextRun() {
+    const delaySec = Math.floor(Math.random() * (100 - 30 + 1)) + 30; // 50–150
+    const delayMs = delaySec * 1000;
+
+    console.log(`⏱️ Next run in ${delaySec}s`);
+
+    setTimeout(async () => {
+        const ACTION_PROBABILITY = 0.5; // %65 ihtimalle sadece bak
+
+        try {
+            if (Math.random() > ACTION_PROBABILITY) {
+                console.log("👀 sadece izleme turu");
+            } else {
+                await checkStandingOrders();
+            }
+        } catch (err) {
+            console.error("⚠️ checkStandingOrders error:", err);
+        } finally {
+            // 🔑 NE OLURSA OLSUN DEVAM
+            scheduleNextRun();
+        }
+    }, delayMs);
+}
+
+
+// ilk başlatma
+scheduleNextRun();

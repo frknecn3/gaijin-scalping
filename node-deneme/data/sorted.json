@@ -1,36 +1,6 @@
 [
     {
         "appid": 1067,
-        "hash_name": "ugcitem_1002156",
-        "asset_class": [
-            {
-                "name": "__itemdefid",
-                "value": "1002156"
-            }
-        ],
-        "name": "Christian II 'Experimental Winter Camouflage'",
-        "commodity": true,
-        "icon": "https://cdn-live.warthunder.com/uploads/60/0f/28/2542d019a7f0fc980ff1ffa5a876d496e8_lq/004-31.png",
-        "price": 0.68,
-        "buy_price": 0.61,
-        "depth": 79,
-        "buy_depth": 42,
-        "tags": [
-            "type:skin",
-            "vehicleType:tank",
-            "country:sweden",
-            "inGamePreview:yes",
-            "eventName:camo_trophy_2_49",
-            "authenticity:semihistorical"
-        ],
-        "color": "14BD3A",
-        "profit": 0.050000000000000044,
-        "liquidityScore": 710.044469912298,
-        "last2Volume": 132,
-        "momentum": 9.565217391304348
-    },
-    {
-        "appid": 1067,
         "hash_name": "id20301_shark_jaws_4",
         "asset_class": [
             {
@@ -44,7 +14,7 @@
         "price": 0.221,
         "buy_price": 0.15,
         "depth": 148,
-        "buy_depth": 74,
+        "buy_depth": 71,
         "tags": [
             "type:decal",
             "quality:uncommon",
@@ -52,127 +22,124 @@
         ],
         "color": "14BD3A",
         "profit": 0.05099999999999999,
-        "liquidityScore": 464.3760856030674,
-        "last2Volume": 89,
-        "momentum": 1.478405315614618
+        "liquidityScore": 494.65229071585213,
+        "last2Volume": 95,
+        "momentum": 1.5780730897009967
     },
     {
         "appid": 1067,
-        "hash_name": "id310143_cuckoo_watch",
+        "hash_name": "ugcitem_1002226",
         "asset_class": [
             {
                 "name": "__itemdefid",
-                "value": "310143"
+                "value": "1002226"
             }
         ],
-        "name": "Cuckoo clock",
+        "name": "T-34-85 (STP) 'Taran'",
         "commodity": true,
-        "icon": "https://static-ggc.gaijin.net/attachables/cuckoo_watch.png",
-        "price": 0.4165,
-        "buy_price": 0.33,
-        "depth": 96,
-        "buy_depth": 44,
-        "tags": [
-            "type:attachable",
-            "quality:rare",
-            "vehicleType:tank",
-            "inGamePreview:yes"
-        ],
-        "color": "2965FF",
-        "profit": 0.06649999999999995,
-        "liquidityScore": 619.802029269954,
-        "last2Volume": 120,
-        "momentum": 1.9292604501607715
-    },
-    {
-        "appid": 1067,
-        "hash_name": "ugcitem_1001707",
-        "asset_class": [
-            {
-                "name": "__itemdefid",
-                "value": "1001707"
-            }
-        ],
-        "name": "Leopard 2A7V 'Putlos Training Area'",
-        "commodity": true,
-        "icon": "https://cdn-live.warthunder.com/uploads/15/17/78/3b0d1aa6b0bf084e83dbb2ffe9ef84b17e_lq/Cover.png",
-        "price": 1.2155,
-        "buy_price": 1.12,
-        "depth": 99,
-        "buy_depth": 29,
-        "tags": [
-            "type:skin",
-            "vehicleType:tank",
-            "country:germany",
-            "inGamePreview:yes",
-            "eventName:camo_trophy_2_35",
-            "authenticity:historical"
-        ],
-        "color": "14BD3A",
-        "profit": 0.0754999999999999,
-        "liquidityScore": 484.08086288734455,
-        "last2Volume": 93,
-        "momentum": 2.03056768558952
-    },
-    {
-        "appid": 1067,
-        "hash_name": "ugcitem_1002129",
-        "asset_class": [
-            {
-                "name": "__itemdefid",
-                "value": "1002129"
-            }
-        ],
-        "name": "BMD-4M 'Kurganmashzavod testing ground'",
-        "commodity": true,
-        "icon": "https://cdn-live.warthunder.com/uploads/23/82/3e/660555235ae8acc0b2f807d687d6270ab9_lq/BMD_4M_Kurganmashzavod_polygon_2008+%E2%80%93+%D0%A4%D0%BE%D0%BD.png",
-        "price": 0.34,
-        "buy_price": 0.24,
+        "icon": "https://cdn-live.warthunder.com/uploads/87/03/d5/1598d86936afd7551c0e7309e7b1a957fc_lq/Cover.png",
+        "price": 0.2125,
+        "buy_price": 0.14,
         "depth": 73,
-        "buy_depth": 21,
+        "buy_depth": 43,
         "tags": [
             "type:skin",
+            "quality:junk",
             "vehicleType:tank",
             "country:ussr",
             "inGamePreview:yes",
-            "eventName:camo_trophy_2_49",
-            "authenticity:historical"
-        ],
-        "color": "14BD3A",
-        "profit": 0.08000000000000002,
-        "liquidityScore": 328.21038226203575,
-        "last2Volume": 59,
-        "momentum": 5.784313725490197
-    },
-    {
-        "appid": 1067,
-        "hash_name": "ugcitem_1002051",
-        "asset_class": [
-            {
-                "name": "__itemdefid",
-                "value": "1002051"
-            }
-        ],
-        "name": "Leopard 2 (OTCo) 'Barracuda'",
-        "commodity": true,
-        "icon": "https://cdn-live.warthunder.com/uploads/4f/35/4c/2da39276bdf67867a5c6f9da46ee95ee13_lq/Cover.png",
-        "price": 0.765,
-        "buy_price": 0.64,
-        "depth": 103,
-        "buy_depth": 55,
-        "tags": [
-            "type:skin",
-            "vehicleType:tank",
-            "country:france",
-            "inGamePreview:yes",
-            "eventName:camo_trophy_2_47",
+            "eventName:camo_trophy_2_51",
             "authenticity:semihistorical"
         ],
         "color": "14BD3A",
-        "profit": 0.10499999999999998,
-        "liquidityScore": 873.7142903663231,
-        "last2Volume": 154,
-        "momentum": 22.647058823529413
+        "profit": 0.05249999999999996,
+        "liquidityScore": 415.193358375439,
+        "last2Volume": 79,
+        "momentum": 2.0789473684210527
+    },
+    {
+        "appid": 1067,
+        "hash_name": "ugcitem_1002232",
+        "asset_class": [
+            {
+                "name": "__itemdefid",
+                "value": "1002232"
+            }
+        ],
+        "name": "Tiger II (Nr.1-50) 'France 1944'",
+        "commodity": true,
+        "icon": "https://cdn-live.warthunder.com/uploads/77/b0/b2/7aa414b798cdc8b0e0a6acfbda73cad6d9_lq/00-1A.jpg",
+        "price": 0.4165,
+        "buy_price": 0.33,
+        "depth": 47,
+        "buy_depth": 43,
+        "tags": [
+            "type:skin",
+            "quality:junk",
+            "vehicleType:tank",
+            "country:germany",
+            "inGamePreview:yes",
+            "eventName:camo_trophy_2_51",
+            "authenticity:historical"
+        ],
+        "color": "14BD3A",
+        "profit": 0.06649999999999995,
+        "liquidityScore": 385.7600838718147,
+        "last2Volume": 73,
+        "momentum": 2.1856287425149703
+    },
+    {
+        "appid": 1067,
+        "hash_name": "id20299_shark_jaws_2",
+        "asset_class": [
+            {
+                "name": "__itemdefid",
+                "value": "20299"
+            }
+        ],
+        "name": "Shark Jaws (2)",
+        "commodity": true,
+        "icon": "https://static-ggc.gaijin.net/decals/jaws_shark_02.png",
+        "price": 0.23800000000000002,
+        "buy_price": 0.15,
+        "depth": 125,
+        "buy_depth": 79,
+        "tags": [
+            "type:decal",
+            "quality:uncommon",
+            "inGamePreview:yes"
+        ],
+        "color": "14BD3A",
+        "profit": 0.068,
+        "liquidityScore": 571.7683181711697,
+        "last2Volume": 110,
+        "momentum": 1.9855595667870036
+    },
+    {
+        "appid": 1067,
+        "hash_name": "id217023_profile_icon_winter_pilot",
+        "asset_class": [
+            {
+                "name": "__itemdefid",
+                "value": "217023"
+            }
+        ],
+        "name": "Profile Icon \"Winter pilot\"",
+        "commodity": true,
+        "icon": "https://static-ggc.gaijin.net/avatars/cardicon_newyear_23.png",
+        "price": 0.561,
+        "buy_price": 0.46,
+        "depth": 327,
+        "buy_depth": 103,
+        "tags": [
+            "type:profile_icon",
+            "quality:common"
+        ],
+        "color": "AFAFA1",
+        "profit": 0.08100000000000002,
+        "liquidityScore": 493.56946377723636,
+        "last2Volume": 94,
+        "momentum": 2.2065727699530515
     },
     {
         "appid": 1067,
@@ -187,9 +154,9 @@
         "commodity": true,
         "icon": "https://wt-ugc.cdn.gaijin.net/az/7i/2u2bboeabifxxa25pejkqte52qmm-boeg.icon.jpg",
         "price": 0.816,
-        "buy_price": 0.69,
-        "depth": 82,
-        "buy_depth": 35,
+        "buy_price": 0.71,
+        "depth": 85,
+        "buy_depth": 33,
         "tags": [
             "type:skin",
             "quality:junk",
@@ -200,27 +167,27 @@
             "authenticity:semihistorical"
         ],
         "color": "14BD3A",
-        "profit": 0.10599999999999998,
-        "liquidityScore": 397.4821986064131,
-        "last2Volume": 76,
-        "momentum": 1.417910447761194
+        "profit": 0.08599999999999997,
+        "liquidityScore": 422.4838576932515,
+        "last2Volume": 81,
+        "momentum": 1.5111940298507462
     },
     {
         "appid": 1067,
-        "hash_name": "id310144_christmas_sock",
+        "hash_name": "id310111_christmas_wreath",
         "asset_class": [
             {
                 "name": "__itemdefid",
-                "value": "310144"
+                "value": "310111"
             }
         ],
-        "name": "Christmas sock",
+        "name": "Christmas Wreath",
         "commodity": true,
-        "icon": "https://static-ggc.gaijin.net/attachables/christmas_sock_decor.png",
-        "price": 0.5864999999999999,
-        "buy_price": 0.46,
-        "depth": 90,
-        "buy_depth": 34,
+        "icon": "https://static-ggc.gaijin.net/attachables/christmas_wreath.png",
+        "price": 0.9265,
+        "buy_price": 0.82,
+        "depth": 126,
+        "buy_depth": 91,
         "tags": [
             "type:attachable",
             "quality:rare",
@@ -228,35 +195,97 @@
             "inGamePreview:yes"
         ],
         "color": "2965FF",
-        "profit": 0.10649999999999987,
-        "liquidityScore": 278.85433185570116,
-        "last2Volume": 52,
-        "momentum": 1.7808219178082192
+        "profit": 0.08650000000000002,
+        "liquidityScore": 467.52127482205617,
+        "last2Volume": 89,
+        "momentum": 2.022727272727273
     },
     {
         "appid": 1067,
-        "hash_name": "id217023_profile_icon_winter_pilot",
+        "hash_name": "ugcitem_1002051",
         "asset_class": [
             {
                 "name": "__itemdefid",
-                "value": "217023"
+                "value": "1002051"
             }
         ],
-        "name": "Profile Icon \"Winter pilot\"",
+        "name": "Leopard 2 (OTCo) 'Barracuda'",
         "commodity": true,
-        "icon": "https://static-ggc.gaijin.net/avatars/cardicon_newyear_23.png",
-        "price": 0.5695,
-        "buy_price": 0.43,
-        "depth": 327,
-        "buy_depth": 98,
+        "icon": "https://cdn-live.warthunder.com/uploads/4f/35/4c/2da39276bdf67867a5c6f9da46ee95ee13_lq/Cover.png",
+        "price": 0.7989999999999999,
+        "buy_price": 0.63,
+        "depth": 101,
+        "buy_depth": 54,
         "tags": [
-            "type:profile_icon",
-            "quality:common"
+            "type:skin",
+            "vehicleType:tank",
+            "country:france",
+            "inGamePreview:yes",
+            "eventName:camo_trophy_2_47",
+            "authenticity:semihistorical"
         ],
-        "color": "AFAFA1",
-        "profit": 0.1195,
-        "liquidityScore": 453.0554769212958,
-        "last2Volume": 86,
-        "momentum": 2.0187793427230045
+        "color": "14BD3A",
+        "profit": 0.1489999999999999,
+        "liquidityScore": 913.2178819086387,
+        "last2Volume": 161,
+        "momentum": 23.676470588235293
+    },
+    {
+        "appid": 1067,
+        "hash_name": "id310140_christmas_gnome",
+        "asset_class": [
+            {
+                "name": "__itemdefid",
+                "value": "310140"
+            }
+        ],
+        "name": "Christmas gnome",
+        "commodity": true,
+        "icon": "https://static-ggc.gaijin.net/attachables/christmas_gnome.png",
+        "price": 1.224,
+        "buy_price": 1.05,
+        "depth": 96,
+        "buy_depth": 42,
+        "tags": [
+            "type:attachable",
+            "quality:rare",
+            "vehicleType:tank",
+            "inGamePreview:yes"
+        ],
+        "color": "2965FF",
+        "profit": 0.15399999999999991,
+        "liquidityScore": 761.6069831363982,
+        "last2Volume": 148,
+        "momentum": 2.1958456973293767
+    },
+    {
+        "appid": 1067,
+        "hash_name": "ugcitem_1002050",
+        "asset_class": [
+            {
+                "name": "__itemdefid",
+                "value": "1002050"
+            }
+        ],
+        "name": "CS/SA5 '7102'",
+        "commodity": true,
+        "icon": "https://cdn-live.warthunder.com/uploads/c4/4d/9a/195c4c6a1e6784389b9e8cd08387d14205_lq/Cover.png",
+        "price": 0.39949999999999997,
+        "buy_price": 0.22,
+        "depth": 92,
+        "buy_depth": 21,
+        "tags": [
+            "type:skin",
+            "vehicleType:tank",
+            "country:china",
+            "inGamePreview:yes",
+            "eventName:camo_trophy_2_47",
+            "authenticity:historical"
+        ],
+        "color": "14BD3A",
+        "profit": 0.15949999999999995,
+        "liquidityScore": 344.5929595748401,
+        "last2Volume": 65,
+        "momentum": 2.1812080536912752
     }
 ]
