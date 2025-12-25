@@ -1,3 +1,8 @@
+import { getInvAssets } from "./trial.js";
+function sleep(ms) {
+  return new Promise(res => setTimeout(res, ms));
+}
+
 function calculateLiquidityScore(stat1d, item) {
   const last2 = stat1d.slice(-2);
   const last2Volume = last2.reduce((s, d) => s + d[2], 0);
@@ -24,30 +29,70 @@ function calculateLiquidityScore(stat1d, item) {
 
 
 async function getPairStat(marketName) {
-    const body = new URLSearchParams({
-        action: "cln_get_pair_stat",
-        appid: "1067",
-        market_name: marketName,
-        currencyid: "gjn",
-        token: process.env.TOKEN
-    });
+  const body = new URLSearchParams({
+    action: "cln_get_pair_stat",
+    appid: "1067",
+    market_name: marketName,
+    currencyid: "gjn",
+    token: process.env.TOKEN
+  });
 
-    const res = await fetch("https://market-proxy.gaijin.net/web", {
-        method: "POST",
-        headers: {
-            "content-type": "application/x-www-form-urlencoded"
-        },
-        body
-    });
+  const res = await fetch("https://market-proxy.gaijin.net/web", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded"
+    },
+    body
+  });
 
-    const json = await res.json();
+  const json = await res.json();
 
-    if (!json.response?.success || !json.response["1d"]) {
-        console.log("Veri alınamadı.", json)
-        return null;
-    }
+  if (!json.response?.success || !json.response["1d"]) {
+    console.log("Veri alınamadı.", json)
+    return null;
+  }
 
-    return json.response["1d"];
+  return json.response["1d"];
 }
 
-export {getPairStat, calculateLiquidityScore}
+async function waitForAssetIdByMarketId(normalID, timeoutMs = 15000) {
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    const inv = await getInvAssets();
+    const match = inv.find(x => Number(x.id) === Number(normalID));
+
+    if (match?.assetId) {
+      return match.assetId;
+    }
+
+    await sleep(700); // kısa polling
+  }
+
+  return null;
+}
+
+async function post(body) {
+  const res = await fetch("https://market-proxy.gaijin.net/web", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(body)
+  });
+  return res.json();
+}
+
+async function marketPost(body) {
+  const res = await fetch("https://market-proxy.gaijin.net/market", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(body)
+  });
+  return res.json();
+}
+
+function sellerShouldGet(price) {
+  const afterFee = price * 0.85;
+  return Math.floor(afterFee / 100) * 100;
+}
+
+export { getPairStat, calculateLiquidityScore, waitForAssetIdByMarketId, post, marketPost, sellerShouldGet }
