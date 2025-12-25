@@ -93,7 +93,7 @@ try {
             });
 
             // rate-limit safety
-            await sleep(1);
+            // await sleep(1);
 
         } catch (err) {
             console.log("HATA:", item.name);
