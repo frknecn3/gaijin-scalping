@@ -76,7 +76,7 @@ const checkStandingOrders = async () => {
                     action: "cln_market_buy",
                     orderId: item.id,
                     pairId: item.pairId,
-                    price: (unnecessarilyHigh ? market.response.BUY[0][0] : market.response.BUY[1][0]) + 100,
+                    price: (!unnecessarilyHigh ? market.response.BUY[0][0] : market.response.BUY[1][0]) + 100,
                     privateMode: true,
                     appid: 1067,
                     market_name: item.market,
@@ -108,7 +108,7 @@ const checkStandingOrders = async () => {
 
 
             if (unprofitable) {
-                console.log("kârsız sell")
+                console.log("DÜŞERSEK KÂR YOK İPTAL")
                 continue;
             };
 
