@@ -46,13 +46,13 @@ const checkStandingOrders = async () => {
 
         if (item.type == "BUY") {
 
-            const unnecessarilyHigh = item.localPrice / 10000 - market.response.BUY[0][1] / 10000 > 0.01
+            const unnecessarilyHigh = item.localPrice / 10000 - market.response.BUY[0][0] / 10000 > 0.01
 
-            console.log("unnecessarily high:", unnecessarilyHigh, "ourbid: ", item.localPrice / 10000, "2ndhighest: ", market.response.BUY[1][0] / 10000)
+            console.log(item.localPrice / 10000, market.response.BUY[0][0] / 10000)
 
             const unprofitable = lowestSell * 0.85 - highestBid < MIN_PROFIT
 
-            console.log("profit ölçer:", lowestSell * 0.85, highestBid, unprofitable)
+            // console.log("profit ölçer:", lowestSell * 0.85, highestBid, unprofitable)
 
             if (unprofitable) {
                 console.log("artık kârsız")
@@ -87,24 +87,36 @@ const checkStandingOrders = async () => {
                     token
                 })
 
-                console.log(res.response)
+                // console.log(res.response)
                 console.log("yeniden koyduk")
             }
-            else console.log("EN YÜKSEK BİD BİZİM")
+            // else console.log("EN YÜKSEK BİD BİZİM")
         }
         else {
             const unprofitable = lowestSell * 0.85 - highestBid < MIN_PROFIT
 
-            const inv = await getInvAssets();
-            const normalID = item.market.split('id')[1].split('_')[0];
+            function extractMarketId(marketName) {
+                const match = marketName.match(/(?:^id|^ugcitem_)(\d+)/);
+                return match ? Number(match[1]) : null;
+            }
+
+
+            // const inv = await getInvAssets();
+            // console.log(item.market)
+            const normalID = extractMarketId(item.market)
 
 
 
-            // if (unprofitable) {
-            //     console.log("kârsız sell")
-            //     continue;
-            // };
+            if (unprofitable) {
+                console.log("kârsız sell")
+                continue;
+            };
 
+            if(userBid - lowestSell > 0.10){
+                console.log("çok düştü geçiyorum")
+                continue;
+            }
+            
             if (userBid > lowestSell) {
                 const res1 = await marketPost({
                     action: "cancel_order",
@@ -149,29 +161,42 @@ const checkStandingOrders = async () => {
 
             const secondLowestSell = market.response.SELL[1][0] / 10000
 
+            console.log("son ikinci sell: ", secondLowestSell)
+
             // TODO çok ucuza gitmeme kısmı
-            // if (secondLowestSell - userBid > 0.01) {
-            //     console.log("çok ucuza gidiyordu")
+            if ((secondLowestSell - item.localPrice / 10000).toFixed(2) > 0.01) {
 
-            //     const res = await post({
-            //         action: "cln_market_sell",
-            //         token: process.env.SELLTOKEN,
-            //         transactid: Math.round(Math.random() * 100000),
-            //         reqstamp: Date.now(),
-            //         appid: 1067,
-            //         contextid: 1,
-            //         assetid: assetID,
-            //         amount: 1,
-            //         currencyid: "gjn",
-            //         price: (secondLowestSell - 0.01) * 10000,
-            //         seller_should_get: sellerShouldGet((secondLowestSell - 0.01) * 10000),
-            //         agree_stamp: Date.now(),
-            //         market_name: item.market,
-            //         privateMode: true,
-            //     })
+                const res1 = await marketPost({
+                    action: "cancel_order",
+                    pairId: item.pairId,
+                    orderId: item.id,
+                    token
+                })
 
-            //     console.log(res)
-            // }
+                console.log(res1)
+                console.log("çok ucuza gidiyordu item: ", (secondLowestSell - item.localPrice/10000 ).toFixed(2))
+
+                const assetID = await waitForAssetIdByMarketId(normalID).catch(err => console.log(err))
+
+                const res = await post({
+                    action: "cln_market_sell",
+                    token: process.env.SELLTOKEN,
+                    transactid: Math.round(Math.random() * 100000),
+                    reqstamp: Date.now(),
+                    appid: 1067,
+                    contextid: 1,
+                    assetid: assetID,
+                    amount: 1,
+                    currencyid: "gjn",
+                    price: (secondLowestSell - 0.01) * 10000,
+                    seller_should_get: sellerShouldGet((secondLowestSell - 0.01) * 10000),
+                    agree_stamp: Date.now(),
+                    market_name: item.market,
+                    privateMode: true,
+                })
+
+                console.log(res)
+            }
         }
 
 
@@ -181,7 +206,7 @@ const checkStandingOrders = async () => {
     console.log("bütün işlemleri dolaştım")
 }
 
-// checkStandingOrders();
+checkStandingOrders();
 
 function scheduleNextRun() {
     const delaySec = Math.floor(Math.random() * (100 - 30 + 1)) + 30; // 50–150

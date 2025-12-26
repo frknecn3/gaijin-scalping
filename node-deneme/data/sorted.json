@@ -1,92 +1,33 @@
 [
     {
         "appid": 1067,
-        "hash_name": "id20301_shark_jaws_4",
+        "hash_name": "ugcitem_1002156",
         "asset_class": [
             {
                 "name": "__itemdefid",
-                "value": "20301"
+                "value": "1002156"
             }
         ],
-        "name": "Shark Jaws (4)",
+        "name": "Christian II 'Experimental Winter Camouflage'",
         "commodity": true,
-        "icon": "https://static-ggc.gaijin.net/decals/jaws_shark_04.png",
-        "price": 0.221,
-        "buy_price": 0.15,
-        "depth": 148,
-        "buy_depth": 71,
-        "tags": [
-            "type:decal",
-            "quality:uncommon",
-            "inGamePreview:yes"
-        ],
-        "color": "14BD3A",
-        "profit": 0.05099999999999999,
-        "liquidityScore": 494.65229071585213,
-        "last2Volume": 95,
-        "momentum": 1.5780730897009967
-    },
-    {
-        "appid": 1067,
-        "hash_name": "ugcitem_1002226",
-        "asset_class": [
-            {
-                "name": "__itemdefid",
-                "value": "1002226"
-            }
-        ],
-        "name": "T-34-85 (STP) 'Taran'",
-        "commodity": true,
-        "icon": "https://cdn-live.warthunder.com/uploads/87/03/d5/1598d86936afd7551c0e7309e7b1a957fc_lq/Cover.png",
-        "price": 0.2125,
-        "buy_price": 0.14,
-        "depth": 73,
-        "buy_depth": 43,
+        "icon": "https://cdn-live.warthunder.com/uploads/60/0f/28/2542d019a7f0fc980ff1ffa5a876d496e8_lq/004-31.png",
+        "price": 0.748,
+        "buy_price": 0.67,
+        "depth": 70,
+        "buy_depth": 22,
         "tags": [
             "type:skin",
-            "quality:junk",
             "vehicleType:tank",
-            "country:ussr",
+            "country:sweden",
             "inGamePreview:yes",
-            "eventName:camo_trophy_2_51",
+            "eventName:camo_trophy_2_49",
             "authenticity:semihistorical"
         ],
         "color": "14BD3A",
-        "profit": 0.05249999999999996,
-        "liquidityScore": 415.193358375439,
-        "last2Volume": 79,
-        "momentum": 2.0789473684210527
-    },
-    {
-        "appid": 1067,
-        "hash_name": "ugcitem_1002232",
-        "asset_class": [
-            {
-                "name": "__itemdefid",
-                "value": "1002232"
-            }
-        ],
-        "name": "Tiger II (Nr.1-50) 'France 1944'",
-        "commodity": true,
-        "icon": "https://cdn-live.warthunder.com/uploads/77/b0/b2/7aa414b798cdc8b0e0a6acfbda73cad6d9_lq/00-1A.jpg",
-        "price": 0.4165,
-        "buy_price": 0.33,
-        "depth": 47,
-        "buy_depth": 43,
-        "tags": [
-            "type:skin",
-            "quality:junk",
-            "vehicleType:tank",
-            "country:germany",
-            "inGamePreview:yes",
-            "eventName:camo_trophy_2_51",
-            "authenticity:historical"
-        ],
-        "color": "14BD3A",
-        "profit": 0.06649999999999995,
-        "liquidityScore": 385.7600838718147,
-        "last2Volume": 73,
-        "momentum": 2.1856287425149703
+        "profit": 0.05799999999999994,
+        "liquidityScore": 464.9017368850756,
+        "last2Volume": 88,
+        "momentum": 3.7288135593220337
     },
     {
         "appid": 1067,
@@ -101,19 +42,19 @@
         "commodity": true,
         "icon": "https://static-ggc.gaijin.net/decals/jaws_shark_02.png",
         "price": 0.23800000000000002,
-        "buy_price": 0.15,
-        "depth": 125,
-        "buy_depth": 79,
+        "buy_price": 0.16,
+        "depth": 124,
+        "buy_depth": 76,
         "tags": [
             "type:decal",
             "quality:uncommon",
             "inGamePreview:yes"
         ],
         "color": "14BD3A",
-        "profit": 0.068,
-        "liquidityScore": 571.7683181711697,
-        "last2Volume": 110,
-        "momentum": 1.9855595667870036
+        "profit": 0.057999999999999996,
+        "liquidityScore": 277.32570197984677,
+        "last2Volume": 52,
+        "momentum": 0.9285714285714286
     },
     {
         "appid": 1067,
@@ -128,77 +69,76 @@
         "commodity": true,
         "icon": "https://static-ggc.gaijin.net/avatars/cardicon_newyear_23.png",
         "price": 0.561,
-        "buy_price": 0.46,
-        "depth": 327,
+        "buy_price": 0.47,
+        "depth": 321,
         "buy_depth": 103,
         "tags": [
             "type:profile_icon",
             "quality:common"
         ],
         "color": "AFAFA1",
-        "profit": 0.08100000000000002,
-        "liquidityScore": 493.56946377723636,
-        "last2Volume": 94,
-        "momentum": 2.2065727699530515
+        "profit": 0.07100000000000006,
+        "liquidityScore": 294.88126793551936,
+        "last2Volume": 55,
+        "momentum": 1.3095238095238095
     },
     {
         "appid": 1067,
-        "hash_name": "ugcitem_1002253",
+        "hash_name": "id20298_shark_jaws_1",
         "asset_class": [
             {
                 "name": "__itemdefid",
-                "value": "1002253"
+                "value": "20298"
             }
         ],
-        "name": "EBRC Jaguar 'Régiment d'infanterie-chars de marine'",
+        "name": "Shark Jaws (1)",
         "commodity": true,
-        "icon": "https://wt-ugc.cdn.gaijin.net/az/7i/2u2bboeabifxxa25pejkqte52qmm-boeg.icon.jpg",
-        "price": 0.816,
-        "buy_price": 0.71,
-        "depth": 85,
-        "buy_depth": 33,
+        "icon": "https://static-ggc.gaijin.net/decals/jaws_shark_01.png",
+        "price": 0.2635,
+        "buy_price": 0.17,
+        "depth": 137,
+        "buy_depth": 71,
+        "tags": [
+            "type:decal",
+            "quality:uncommon",
+            "inGamePreview:yes"
+        ],
+        "color": "14BD3A",
+        "profit": 0.07349999999999998,
+        "liquidityScore": 277.2399100178256,
+        "last2Volume": 52,
+        "momentum": 0.9187279151943463
+    },
+    {
+        "appid": 1067,
+        "hash_name": "ugcitem_1002231",
+        "asset_class": [
+            {
+                "name": "__itemdefid",
+                "value": "1002231"
+            }
+        ],
+        "name": "BMD-4M2 'MILEX-2023'",
+        "commodity": true,
+        "icon": "https://cdn-live.warthunder.com/uploads/a4/da/e3/8ac8c279961fea842cee712bc0c58a25e6_lq/bmd_promo.png",
+        "price": 0.24649999999999997,
+        "buy_price": 0.12,
+        "depth": 65,
+        "buy_depth": 27,
         "tags": [
             "type:skin",
             "quality:junk",
             "vehicleType:tank",
-            "country:france",
+            "country:ussr",
             "inGamePreview:yes",
             "eventName:camo_trophy_2_51",
             "authenticity:semihistorical"
         ],
         "color": "14BD3A",
-        "profit": 0.08599999999999997,
-        "liquidityScore": 422.4838576932515,
-        "last2Volume": 81,
-        "momentum": 1.5111940298507462
-    },
-    {
-        "appid": 1067,
-        "hash_name": "id310111_christmas_wreath",
-        "asset_class": [
-            {
-                "name": "__itemdefid",
-                "value": "310111"
-            }
-        ],
-        "name": "Christmas Wreath",
-        "commodity": true,
-        "icon": "https://static-ggc.gaijin.net/attachables/christmas_wreath.png",
-        "price": 0.9265,
-        "buy_price": 0.82,
-        "depth": 126,
-        "buy_depth": 91,
-        "tags": [
-            "type:attachable",
-            "quality:rare",
-            "vehicleType:tank",
-            "inGamePreview:yes"
-        ],
-        "color": "2965FF",
-        "profit": 0.08650000000000002,
-        "liquidityScore": 467.52127482205617,
-        "last2Volume": 89,
-        "momentum": 2.022727272727273
+        "profit": 0.10649999999999996,
+        "liquidityScore": 300.99667846559055,
+        "last2Volume": 57,
+        "momentum": 1.2337662337662336
     },
     {
         "appid": 1067,
@@ -212,10 +152,10 @@
         "name": "Leopard 2 (OTCo) 'Barracuda'",
         "commodity": true,
         "icon": "https://cdn-live.warthunder.com/uploads/4f/35/4c/2da39276bdf67867a5c6f9da46ee95ee13_lq/Cover.png",
-        "price": 0.7989999999999999,
-        "buy_price": 0.63,
-        "depth": 101,
-        "buy_depth": 54,
+        "price": 0.8245,
+        "buy_price": 0.67,
+        "depth": 103,
+        "buy_depth": 60,
         "tags": [
             "type:skin",
             "vehicleType:tank",
@@ -225,10 +165,10 @@
             "authenticity:semihistorical"
         ],
         "color": "14BD3A",
-        "profit": 0.1489999999999999,
-        "liquidityScore": 913.2178819086387,
-        "last2Volume": 161,
-        "momentum": 23.676470588235293
+        "profit": 0.13449999999999995,
+        "liquidityScore": 541.8919073068056,
+        "last2Volume": 102,
+        "momentum": 4.553571428571429
     },
     {
         "appid": 1067,
@@ -242,10 +182,10 @@
         "name": "Christmas gnome",
         "commodity": true,
         "icon": "https://static-ggc.gaijin.net/attachables/christmas_gnome.png",
-        "price": 1.224,
-        "buy_price": 1.05,
-        "depth": 96,
-        "buy_depth": 42,
+        "price": 1.2325,
+        "buy_price": 1.06,
+        "depth": 104,
+        "buy_depth": 37,
         "tags": [
             "type:attachable",
             "quality:rare",
@@ -253,39 +193,9 @@
             "inGamePreview:yes"
         ],
         "color": "2965FF",
-        "profit": 0.15399999999999991,
-        "liquidityScore": 761.6069831363982,
-        "last2Volume": 148,
-        "momentum": 2.1958456973293767
-    },
-    {
-        "appid": 1067,
-        "hash_name": "ugcitem_1002050",
-        "asset_class": [
-            {
-                "name": "__itemdefid",
-                "value": "1002050"
-            }
-        ],
-        "name": "CS/SA5 '7102'",
-        "commodity": true,
-        "icon": "https://cdn-live.warthunder.com/uploads/c4/4d/9a/195c4c6a1e6784389b9e8cd08387d14205_lq/Cover.png",
-        "price": 0.39949999999999997,
-        "buy_price": 0.22,
-        "depth": 92,
-        "buy_depth": 21,
-        "tags": [
-            "type:skin",
-            "vehicleType:tank",
-            "country:china",
-            "inGamePreview:yes",
-            "eventName:camo_trophy_2_47",
-            "authenticity:historical"
-        ],
-        "color": "14BD3A",
-        "profit": 0.15949999999999995,
-        "liquidityScore": 344.5929595748401,
-        "last2Volume": 65,
-        "momentum": 2.1812080536912752
+        "profit": 0.15249999999999986,
+        "liquidityScore": 467.70091637391596,
+        "last2Volume": 90,
+        "momentum": 1.3157894736842104
     }
 ]
