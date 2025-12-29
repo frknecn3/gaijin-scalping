@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
+import fs from 'fs';
 import { getInvAssets } from "./trial.js";
-import { marketPost, post, sellerShouldGet, waitForAssetIdByMarketId } from "./helpers.js";
+import { findItemOrder, marketPost, post, sellerShouldGet, waitForAssetIdByMarketId } from "./helpers.js";
 dotenv.config();
 
 // ================= CONFIG =================
@@ -21,9 +22,15 @@ function sleep(ms) {
 
 const checkStandingOrders = async () => {
 
+    standingOrders = JSON.parse(fs.readFileSync('./data/orders.json','utf-8'));
+
     const json = await post({ action: "cln_get_user_open_orders", token })
 
     // console.log(json.response)
+
+    fs.writeFileSync('./data/orders.json', JSON.stringify(json.response))
+
+    
 
     const pendingItems = [...json.response];
 
@@ -93,6 +100,8 @@ const checkStandingOrders = async () => {
             // else console.log("EN YÜKSEK BİD BİZİM")
         }
         else {
+
+            // console.log("findtest: ", findItemOrder("1001707", standingOrders))
             const unprofitable = lowestSell * 0.85 - highestBid < MIN_PROFIT
 
             function extractMarketId(marketName) {
@@ -164,7 +173,7 @@ const checkStandingOrders = async () => {
             console.log("son ikinci sell: ", secondLowestSell)
 
             // TODO çok ucuza gitmeme kısmı
-            if ((secondLowestSell - item.localPrice / 10000).toFixed(2) > 0.01) {
+            if ((secondLowestSell - item.localPrice / 10000).toFixed(2) < 0.01) {
 
                 const res1 = await marketPost({
                     action: "cancel_order",
@@ -209,7 +218,7 @@ const checkStandingOrders = async () => {
 checkStandingOrders();
 
 function scheduleNextRun() {
-    const delaySec = Math.floor(Math.random() * (100 - 30 + 1)) + 30; // 50–150
+    const delaySec = Math.floor(Math.random() * (30 - 10 + 1)) + 10; // 50–150
     const delayMs = delaySec * 1000;
 
     console.log(`⏱️ Next run in ${delaySec}s`);

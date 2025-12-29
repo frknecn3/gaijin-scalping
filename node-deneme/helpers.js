@@ -95,4 +95,13 @@ function sellerShouldGet(price) {
   return Math.floor(afterFee / 100) * 100;
 }
 
-export { getPairStat, calculateLiquidityScore, waitForAssetIdByMarketId, post, marketPost, sellerShouldGet }
+function extractMarketId(marketName) {
+  const match = marketName.match(/(?:^id|^ugcitem_)(\d+)/);
+  return match ? Number(match[1]) : null;
+}
+
+
+const findItemOrder = (id, array) => {
+  return array.find((i) => extractMarketId(i.market) == id)
+}
+export { getPairStat, calculateLiquidityScore, waitForAssetIdByMarketId, post, marketPost, sellerShouldGet, findItemOrder }

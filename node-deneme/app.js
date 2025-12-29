@@ -67,6 +67,7 @@ try {
 
             return {
                 ...item,
+                orgPrice: item.price,
                 price: newPrice,
                 buy_price: newSellPrice,
                 profit: (newPrice - 0.01) - (newSellPrice + 0.01)

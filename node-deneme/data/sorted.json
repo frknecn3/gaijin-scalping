@@ -1,62 +1,89 @@
 [
     {
         "appid": 1067,
-        "hash_name": "Advancing Storm' trophy I",
+        "hash_name": "id20299_shark_jaws_2",
         "asset_class": [
             {
                 "name": "__itemdefid",
-                "value": "100101"
+                "value": "20299"
             }
         ],
-        "name": "'Advancing Storm' trophy",
+        "name": "Shark Jaws (2)",
         "commodity": true,
-        "icon": "https://static-ggc.gaijin.net/items_camouflage_trophy/items_box18_1_77.png",
-        "price": 0.595,
-        "buy_price": 0.51,
-        "depth": 580,
-        "buy_depth": 1195,
+        "icon": "https://static-ggc.gaijin.net/decals/jaws_shark_02.png",
+        "price": 0.221,
+        "buy_price": 0.15,
+        "depth": 138,
+        "buy_depth": 75,
+        "tags": [
+            "type:decal",
+            "quality:uncommon",
+            "inGamePreview:yes"
+        ],
+        "color": "14BD3A",
+        "profit": 0.05099999999999999,
+        "liquidityScore": 272.6997308850565,
+        "last2Volume": 51,
+        "momentum": 1.0493827160493827
+    },
+    {
+        "appid": 1067,
+        "hash_name": "ugcitem_1002231",
+        "asset_class": [
+            {
+                "name": "__itemdefid",
+                "value": "1002231"
+            }
+        ],
+        "name": "BMD-4M2 'MILEX-2023'",
+        "commodity": true,
+        "icon": "https://cdn-live.warthunder.com/uploads/a4/da/e3/8ac8c279961fea842cee712bc0c58a25e6_lq/bmd_promo.png",
+        "price": 0.204,
+        "buy_price": 0.13,
+        "depth": 78,
+        "buy_depth": 74,
+        "tags": [
+            "type:skin",
+            "quality:junk",
+            "vehicleType:tank",
+            "country:ussr",
+            "inGamePreview:yes",
+            "eventName:camo_trophy_2_51",
+            "authenticity:semihistorical"
+        ],
+        "color": "14BD3A",
+        "profit": 0.053999999999999965,
+        "liquidityScore": 303.42752927567386,
+        "last2Volume": 57,
+        "momentum": 1.2337662337662336
+    },
+    {
+        "appid": 1067,
+        "hash_name": "Advancing Storm' trophy II",
+        "asset_class": [
+            {
+                "name": "__itemdefid",
+                "value": "100102"
+            }
+        ],
+        "name": "'Project X I' trophy",
+        "commodity": true,
+        "icon": "https://static-ggc.gaijin.net/items_camouflage_trophy/items_box_21_1_79.png",
+        "price": 0.731,
+        "buy_price": 0.61,
+        "depth": 325,
+        "buy_depth": 119,
         "tags": [
             "type:chest",
             "quality:common",
             "countryDenyPurchase:be_kr",
-            "eventName:camo_trophy_1_77"
+            "eventName:camo_trophy_1_79"
         ],
         "color": "AFAFA1",
-        "profit": 0.06499999999999995,
-        "liquidityScore": 408.60624904582244,
-        "last2Volume": 76,
-        "momentum": 1.6740088105726874
-    },
-    {
-        "appid": 1067,
-        "hash_name": "ugcitem_1002249",
-        "asset_class": [
-            {
-                "name": "__itemdefid",
-                "value": "1002249"
-            }
-        ],
-        "name": "F-15C Golden Eagle 'U.S.-Japan Security Treaty 60th Anniversary'",
-        "commodity": true,
-        "icon": "https://wt-ugc.cdn.gaijin.net/rq/5e/xomicrzjix5dwu6n67x7gavv2mzp-5tk.icon.jpg",
-        "price": 0.221,
-        "buy_price": 0.13,
-        "depth": 56,
-        "buy_depth": 93,
-        "tags": [
-            "type:skin",
-            "quality:junk",
-            "vehicleType:aircraft",
-            "country:usa",
-            "inGamePreview:yes",
-            "eventName:camo_trophy_2_51",
-            "authenticity:historical"
-        ],
-        "color": "14BD3A",
-        "profit": 0.07099999999999998,
-        "liquidityScore": 299.29563655919935,
-        "last2Volume": 56,
-        "momentum": 1.238938053097345
+        "profit": 0.10099999999999998,
+        "liquidityScore": 340.14859463133115,
+        "last2Volume": 64,
+        "momentum": 1.1940298507462686
     },
     {
         "appid": 1067,
@@ -70,10 +97,10 @@
         "name": "'eSport II' trophy",
         "commodity": true,
         "icon": "https://static-ggc.gaijin.net/items_camouflage_trophy/items_box_esport_II.png",
-        "price": 0.6545,
-        "buy_price": 0.56,
-        "depth": 628,
-        "buy_depth": 507,
+        "price": 0.748,
+        "buy_price": 0.62,
+        "depth": 596,
+        "buy_depth": 493,
         "tags": [
             "type:chest",
             "quality:common",
@@ -81,121 +108,10 @@
             "eventName:esport_trophy_2"
         ],
         "color": "AFAFA1",
-        "profit": 0.0744999999999999,
-        "liquidityScore": 628.6895199139129,
-        "last2Volume": 121,
-        "momentum": 1.063268892794376
-    },
-    {
-        "appid": 1067,
-        "hash_name": "id20298_shark_jaws_1",
-        "asset_class": [
-            {
-                "name": "__itemdefid",
-                "value": "20298"
-            }
-        ],
-        "name": "Shark Jaws (1)",
-        "commodity": true,
-        "icon": "https://static-ggc.gaijin.net/decals/jaws_shark_01.png",
-        "price": 0.255,
-        "buy_price": 0.16,
-        "depth": 139,
-        "buy_depth": 74,
-        "tags": [
-            "type:decal",
-            "quality:uncommon",
-            "inGamePreview:yes"
-        ],
-        "color": "14BD3A",
-        "profit": 0.07499999999999998,
-        "liquidityScore": 338.22543253848875,
-        "last2Volume": 64,
-        "momentum": 1.1307420494699647
-    },
-    {
-        "appid": 1067,
-        "hash_name": "id20299_shark_jaws_2",
-        "asset_class": [
-            {
-                "name": "__itemdefid",
-                "value": "20299"
-            }
-        ],
-        "name": "Shark Jaws (2)",
-        "commodity": true,
-        "icon": "https://static-ggc.gaijin.net/decals/jaws_shark_02.png",
-        "price": 0.24649999999999997,
-        "buy_price": 0.15,
-        "depth": 123,
-        "buy_depth": 72,
-        "tags": [
-            "type:decal",
-            "quality:uncommon",
-            "inGamePreview:yes"
-        ],
-        "color": "14BD3A",
-        "profit": 0.07649999999999996,
-        "liquidityScore": 338.2078068948737,
-        "last2Volume": 64,
-        "momentum": 1.1428571428571428
-    },
-    {
-        "appid": 1067,
-        "hash_name": "id20301_shark_jaws_4",
-        "asset_class": [
-            {
-                "name": "__itemdefid",
-                "value": "20301"
-            }
-        ],
-        "name": "Shark Jaws (4)",
-        "commodity": true,
-        "icon": "https://static-ggc.gaijin.net/decals/jaws_shark_04.png",
-        "price": 0.23800000000000002,
-        "buy_price": 0.14,
-        "depth": 148,
-        "buy_depth": 67,
-        "tags": [
-            "type:decal",
-            "quality:uncommon",
-            "inGamePreview:yes"
-        ],
-        "color": "14BD3A",
-        "profit": 0.07799999999999999,
-        "liquidityScore": 373.4919038984465,
-        "last2Volume": 71,
-        "momentum": 1.2633451957295374
-    },
-    {
-        "appid": 1067,
-        "hash_name": "ugcitem_1002051",
-        "asset_class": [
-            {
-                "name": "__itemdefid",
-                "value": "1002051"
-            }
-        ],
-        "name": "Leopard 2 (OTCo) 'Barracuda'",
-        "commodity": true,
-        "icon": "https://cdn-live.warthunder.com/uploads/4f/35/4c/2da39276bdf67867a5c6f9da46ee95ee13_lq/Cover.png",
-        "price": 0.7989999999999999,
-        "buy_price": 0.7,
-        "depth": 104,
-        "buy_depth": 54,
-        "tags": [
-            "type:skin",
-            "vehicleType:tank",
-            "country:france",
-            "inGamePreview:yes",
-            "eventName:camo_trophy_2_47",
-            "authenticity:semihistorical"
-        ],
-        "color": "14BD3A",
-        "profit": 0.07899999999999996,
-        "liquidityScore": 592.8119995556974,
-        "last2Volume": 112,
-        "momentum": 5
+        "profit": 0.10799999999999998,
+        "liquidityScore": 659.7073693974136,
+        "last2Volume": 127,
+        "momentum": 1.2549407114624505
     },
     {
         "appid": 1067,
@@ -209,10 +125,10 @@
         "name": "'Project X II' trophy",
         "commodity": true,
         "icon": "https://static-ggc.gaijin.net/items_camouflage_trophy/items_box_22_1_79_2.png",
-        "price": 0.425,
-        "buy_price": 0.32,
-        "depth": 1067,
-        "buy_depth": 134,
+        "price": 0.459,
+        "buy_price": 0.33,
+        "depth": 1089,
+        "buy_depth": 236,
         "tags": [
             "type:chest",
             "quality:common",
@@ -220,10 +136,10 @@
             "eventName:camo_trophy_1_79_2"
         ],
         "color": "AFAFA1",
-        "profit": 0.08499999999999996,
-        "liquidityScore": 331.1015386210296,
-        "last2Volume": 62,
-        "momentum": 1.3839285714285716
+        "profit": 0.10899999999999999,
+        "liquidityScore": 393.9570625194752,
+        "last2Volume": 74,
+        "momentum": 1.6157205240174672
     },
     {
         "appid": 1067,
@@ -237,19 +153,71 @@
         "name": "Profile Icon \"Winter pilot\"",
         "commodity": true,
         "icon": "https://static-ggc.gaijin.net/avatars/cardicon_newyear_23.png",
-        "price": 0.5695,
-        "buy_price": 0.44,
-        "depth": 314,
+        "price": 0.5525,
+        "buy_price": 0.4,
+        "depth": 321,
+        "buy_depth": 96,
+        "tags": [
+            "type:profile_icon",
+            "quality:common"
+        ],
+        "color": "AFAFA1",
+        "profit": 0.13249999999999995,
+        "liquidityScore": 295.54913293551016,
+        "last2Volume": 55,
+        "momentum": 1.375
+    },
+    {
+        "appid": 1067,
+        "hash_name": "id217036_profile_icon_snowboarder",
+        "asset_class": [
+            {
+                "name": "__itemdefid",
+                "value": "217036"
+            }
+        ],
+        "name": "Profile Icon \"Snowboarder\"",
+        "commodity": true,
+        "icon": "https://static-ggc.gaijin.net/avatars/cardicon_winter_marathon_2024.png",
+        "price": 3.5105,
+        "buy_price": 3.33,
+        "depth": 242,
         "buy_depth": 99,
         "tags": [
             "type:profile_icon",
             "quality:common"
         ],
         "color": "AFAFA1",
-        "profit": 0.10949999999999999,
-        "liquidityScore": 320.62479627225,
-        "last2Volume": 60,
-        "momentum": 1.4285714285714286
+        "profit": 0.1605000000000003,
+        "liquidityScore": 555.6400227530863,
+        "last2Volume": 107,
+        "momentum": 1.3048780487804879
+    },
+    {
+        "appid": 1067,
+        "hash_name": "id217044_profile_icon_call_sign_snow_maiden",
+        "asset_class": [
+            {
+                "name": "__itemdefid",
+                "value": "217044"
+            }
+        ],
+        "name": "Profile Icon \"Call sign \"Snow Maiden\"\"",
+        "commodity": true,
+        "icon": "https://static-ggc.gaijin.net/avatars/cardicon_winter_marathon_2025.png",
+        "price": 2.703,
+        "buy_price": 2.47,
+        "depth": 93,
+        "buy_depth": 93,
+        "tags": [
+            "type:profile_icon",
+            "quality:common"
+        ],
+        "color": "AFAFA1",
+        "profit": 0.21300000000000008,
+        "liquidityScore": 470.88808947501514,
+        "last2Volume": 90,
+        "momentum": 1.282051282051282
     },
     {
         "appid": 1067,
@@ -263,10 +231,10 @@
         "name": "Christmas gnome",
         "commodity": true,
         "icon": "https://static-ggc.gaijin.net/attachables/christmas_gnome.png",
-        "price": 1.0795,
-        "buy_price": 0.92,
-        "depth": 112,
-        "buy_depth": 38,
+        "price": 1.054,
+        "buy_price": 0.8,
+        "depth": 107,
+        "buy_depth": 47,
         "tags": [
             "type:attachable",
             "quality:rare",
@@ -274,37 +242,65 @@
             "inGamePreview:yes"
         ],
         "color": "2965FF",
-        "profit": 0.13949999999999985,
-        "liquidityScore": 513.1751586225995,
-        "last2Volume": 99,
-        "momentum": 1.4473684210526314
+        "profit": 0.23399999999999999,
+        "liquidityScore": 368.4122017588383,
+        "last2Volume": 70,
+        "momentum": 1.1146496815286624
     },
     {
         "appid": 1067,
-        "hash_name": "id310111_christmas_wreath",
+        "hash_name": "id100153_line_of_contact_trophy",
         "asset_class": [
             {
                 "name": "__itemdefid",
-                "value": "310111"
+                "value": "100153"
             }
         ],
-        "name": "Christmas Wreath",
+        "name": "'Line of Contact' trophy",
         "commodity": true,
-        "icon": "https://static-ggc.gaijin.net/attachables/christmas_wreath.png",
-        "price": 1.054,
-        "buy_price": 0.82,
-        "depth": 126,
-        "buy_depth": 57,
+        "icon": "https://static-ggc.gaijin.net/items_camouflage_trophy/items_box_2_53.png",
+        "price": 0.4165,
+        "buy_price": 0.16,
+        "depth": 14,
+        "buy_depth": 115,
         "tags": [
-            "type:attachable",
-            "quality:rare",
-            "vehicleType:tank",
-            "inGamePreview:yes"
+            "type:chest",
+            "quality:common",
+            "countryDenyPurchase:be_kr",
+            "eventName:camo_trophy_2_53"
         ],
-        "color": "2965FF",
-        "profit": 0.21400000000000008,
-        "liquidityScore": 304.32132903163927,
-        "last2Volume": 57,
-        "momentum": 1.25
+        "color": "AFAFA1",
+        "profit": 0.23649999999999996,
+        "liquidityScore": 862.6257705733191,
+        "last2Volume": 94,
+        "momentum": 94
+    },
+    {
+        "appid": 1067,
+        "hash_name": "id100134_esport_trophy",
+        "asset_class": [
+            {
+                "name": "__itemdefid",
+                "value": "100134"
+            }
+        ],
+        "name": "'eSport' trophy",
+        "commodity": true,
+        "icon": "https://static-ggc.gaijin.net/items_camouflage_trophy/items_box_esport.png",
+        "price": 2.465,
+        "buy_price": 2.12,
+        "depth": 72,
+        "buy_depth": 310,
+        "tags": [
+            "type:chest",
+            "quality:common",
+            "countryDenyPurchase:be_kr",
+            "eventName:esport_trophy_1"
+        ],
+        "color": "AFAFA1",
+        "profit": 0.3250000000000002,
+        "liquidityScore": 806.9399669718318,
+        "last2Volume": 154,
+        "momentum": 4.11764705882353
     }
 ]
