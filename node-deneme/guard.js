@@ -6,13 +6,14 @@ dotenv.config();
 
 // ================= CONFIG =================
 
-const MIN_PROFIT = 0.03;     // %8 net kâr
+const MIN_PROFIT = 0.20 ;     // %8 net kâr
 const FEE = 0.15;            // %15 Gaijin komisyonu
 const COOLDOWN = 60_000;     // 60 saniye
 const DRY_RUN = true;        // true = sadece log
 const token = process.env.TOKEN;
 
 let standingOrders = [];
+const ignore = [];
 
 function sleep(ms) {
     return new Promise(res => setTimeout(res, ms));
@@ -22,7 +23,7 @@ function sleep(ms) {
 
 const checkStandingOrders = async () => {
 
-    standingOrders = JSON.parse(fs.readFileSync('./data/orders.json','utf-8'));
+    standingOrders = JSON.parse(fs.readFileSync('./data/orders.json', 'utf-8'));
 
     const json = await post({ action: "cln_get_user_open_orders", token })
 
@@ -30,11 +31,17 @@ const checkStandingOrders = async () => {
 
     fs.writeFileSync('./data/orders.json', JSON.stringify(json.response))
 
-    
+
 
     const pendingItems = [...json.response];
 
     for (let item of pendingItems) {
+
+        if (ignore.includes(item.market)) {
+
+            console.log("item umursanmıyor")
+            continue
+        };
 
         const userBid = item.localPrice / 10000
 
@@ -103,6 +110,7 @@ const checkStandingOrders = async () => {
 
             // console.log("findtest: ", findItemOrder("1001707", standingOrders))
             const unprofitable = lowestSell * 0.85 - highestBid < MIN_PROFIT
+            // const unprofitable = lowestSell * 0.85 - highestBid < item.localPrice / 100000
 
             function extractMarketId(marketName) {
                 const match = marketName.match(/(?:^id|^ugcitem_)(\d+)/);
@@ -121,11 +129,11 @@ const checkStandingOrders = async () => {
                 continue;
             };
 
-            if(userBid - lowestSell > 0.10){
+            if (userBid - lowestSell > 0.50) {
                 console.log("çok düştü geçiyorum")
                 continue;
             }
-            
+
             if (userBid > lowestSell) {
                 const res1 = await marketPost({
                     action: "cancel_order",
@@ -147,6 +155,7 @@ const checkStandingOrders = async () => {
                     market_name: item.market
                 })
 
+                const price = Math.round((lowestSell - 0.01) * 10000)
 
                 const res = await post({
                     action: "cln_market_sell",
@@ -158,14 +167,26 @@ const checkStandingOrders = async () => {
                     assetid: assetID,
                     amount: 1,
                     currencyid: "gjn",
-                    price: (lowestSell - 0.01) * 10000,
-                    seller_should_get: sellerShouldGet((lowestSell - 0.01) * 10000),
+                    price,
+                    seller_should_get: sellerShouldGet(price),
                     agree_stamp: Date.now(),
                     market_name: item.market,
                     privateMode: false,
                 })
 
-                console.log("1res:", res)
+                console.log(res)
+                if (res.response.error == "WRONG_PRICE") {
+                    console.log("\n\n")
+                    console.log("yanlış fiyat\n")
+                    console.log(
+                        `low-1: ${lowestSell - 0.01} \n
+                            designated: ${price}
+                            lowestSell: ${lowestSell}
+                            rawSell: ${market.response.SELL[0][0]}
+                            rawBuy: ${market.response.BUY[0][0]}
+                        `)
+                    console.log("\n\n")
+                }
             }
 
             const secondLowestSell = market.response.SELL[1][0] / 10000
@@ -173,7 +194,7 @@ const checkStandingOrders = async () => {
             console.log("son ikinci sell: ", secondLowestSell)
 
             // TODO çok ucuza gitmeme kısmı
-            if ((secondLowestSell - item.localPrice / 10000).toFixed(2) < 0.01) {
+            if ((secondLowestSell - item.localPrice / 10000).toFixed(2) != 0.00 && (secondLowestSell - item.localPrice / 10000).toFixed(2) < 0.01) {
 
                 const res1 = await marketPost({
                     action: "cancel_order",
@@ -183,7 +204,7 @@ const checkStandingOrders = async () => {
                 })
 
                 console.log(res1)
-                console.log("çok ucuza gidiyordu item: ", (secondLowestSell - item.localPrice/10000 ).toFixed(2))
+                console.log("çok ucuza gidiyordu item: ", (secondLowestSell - item.localPrice / 10000).toFixed(2))
 
                 const assetID = await waitForAssetIdByMarketId(normalID).catch(err => console.log(err))
 
@@ -218,7 +239,8 @@ const checkStandingOrders = async () => {
 checkStandingOrders();
 
 function scheduleNextRun() {
-    const delaySec = Math.floor(Math.random() * (30 - 10 + 1)) + 10; // 50–150
+    const x = 20
+    const delaySec = Math.floor(Math.random() * (x - 1 + 1)) + 1; // 50–150
     const delayMs = delaySec * 1000;
 
     console.log(`⏱️ Next run in ${delaySec}s`);
