@@ -20,7 +20,7 @@ A Node-based full-stack trading assistant that helps you find the best possible 
 
 The backend utilizes Axios to fetch data from Gaijin servers imitating an actual user by using a JWT generated through signing in to the Marketplace.
 
-Since there are rate limitations from Gaijin's side, as well as the fact that they wouldn't send detailed data in a whole, the application runs a /detail query on each item received, to access all of the information such as trade volume, listing prices and others.
+Since there are rate limitations from Gaijin's side, as well as the fact that they wouldn't send detailed data in bulk, the application runs a /detail query on each item received, to access all of the information such as trade volume, listing prices and others.
 
 The trading assistant's React-based user interface displays each item listed on Gaijin's War Thunder marketplace by fetching it from its own backend.
 
