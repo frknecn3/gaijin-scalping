@@ -7,11 +7,11 @@ A Node-based full-stack trading assistant that helps you find the best possible 
 
 ## Technologies Used
 
--Node.js
--Express
--React
--Axios
--Tailwind
+- Node.js
+- Express
+- React
+- Axios
+- Tailwind
 
 ## How Does it Work?
 <hr>
