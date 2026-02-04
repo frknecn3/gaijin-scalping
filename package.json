@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "npm run build && node dist/app.js"
+    "watcher": "node ./dist/guard.js",
+    "start": "concurrently \"npm run build && node dist/app.js\" \"npm run watcher\" \"cd frontend && npm run dev\""
   },
   "keywords": [],
   "author": "",
@@ -22,6 +23,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "autoprefixer": "^10.4.23",
+    "concurrently": "^9.2.1",
     "nodemon": "^3.1.11",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.19",
