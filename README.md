@@ -41,6 +41,6 @@ The marketplace is volatile; manual order adjustment is often too slow to compet
 
 In the foreseeable future:
 
-- **Auto-Relist Bought Items:** The assistant makes sure the user can either buy or sell the necessary items. However, it doesn't have the feature to create a sell order for a bought item. This prevents the assistant from being a fully automatic trading bot, hence it still requires active user input to work as intended.
+- **Auto Re-list Bought Items:** The assistant makes sure the user can either buy or sell the necessary items. However, it doesn't have the feature to create a sell order for a bought item. This prevents the assistant from being a fully automatic trading bot, hence it still requires active user input to work as intended.
 
 - **Fully Automated Trading:**  At the moment, the assistant doesn't provide the ability to automatically enter trading with products that seem profitable, the bidding guard system only kicks in and works on already existing listings. Implementing a system to allow the assistant to automatically enter trading is currently in progress.
