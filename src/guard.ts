@@ -247,7 +247,7 @@ const checkStandingOrders = async () => {
 checkStandingOrders();
 
 function scheduleNextRun() {
-    const x = 20
+    const x = 10
     const delaySec = Math.floor(Math.random() * (x - 1 + 1)) + 1; // 50–150
     const delayMs = delaySec * 1000;
 
