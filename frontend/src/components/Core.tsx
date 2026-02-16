@@ -92,7 +92,7 @@ const Core = (props: Props) => {
         {/* min fiyat */}
         <div className="flex flex-col">
           <label htmlFor="">Min Profit</label>
-          <input type="number" className='p-2 rounded-md' placeholder='Profit...' onChange={(e) => setMinProfit(Number(e.target.value))} />
+          <input type="number" className='p-2 rounded-md' min={0.1} defaultValue={0.1} placeholder='Profit...' onChange={(e) => setMinProfit(Number(e.target.value))} />
         </div>
 
       </div>

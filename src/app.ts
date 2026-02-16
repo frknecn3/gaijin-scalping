@@ -42,9 +42,15 @@ app.get('/renewOrders', (req, res):void => {
 
 app.get('/orders', async (req, res) => {
 
-    const items = JSON.parse(
+    let items = JSON.parse(
         await fs.promises.readFile('./src/data/items.json', 'utf8')
     )
+
+    if(!items) {
+        await fs.promises.writeFile('./src/data/items.json', JSON.stringify([]))
+        items = [];
+
+    }
 
     res.status(200).send({
         success: true,

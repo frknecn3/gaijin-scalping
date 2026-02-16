@@ -6,8 +6,8 @@ dotenv.config();
 
 // ================= CONFIG =================
 
-const MIN_PROFIT = 0.20 ;     // %8 net kâr
-const FEE = 0.15;            // %15 Gaijin komisyonu
+const MIN_PROFIT = 0.2 ;     // %8 net kâr
+const FEE = 0.;            // %15 Gaijin komisyonu
 const COOLDOWN = 60_000;     // 60 saniye
 const DRY_RUN = true;        // true = sadece log
 const token = process.env.TOKEN;
