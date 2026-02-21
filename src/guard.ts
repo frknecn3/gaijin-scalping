@@ -137,10 +137,10 @@ const checkStandingOrders = async () => {
 
 
 
-            // if (unprofitable) {
-            //     console.log("artık kârsız")
-            //     continue;
-            // };
+            if (unprofitable) {
+                console.log("artık kârsız")
+                continue;
+            };
 
             // if (userBid - lowestSell > 0.50) {
             //     continue;
