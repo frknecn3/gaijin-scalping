@@ -114,14 +114,16 @@ const checkStandingOrders = async () => {
         }
         else {
 
-            console.log("market SELL DIFF 1/2: ", market.response.SELL[0][0], market.response.SELL[1][0])
+            console.log("Sell tipi işlem")
+            // console.log("market SELL DIFF 1/2: ", market.response.SELL[0][0], market.response.SELL[1][0])
 
             const unnecessarilyLowSell = market.response.SELL[1][0] - market.response.SELL[0][0] > 100
 
             if (unnecessarilyLowSell) console.log("çok uCUZA SATIYOZ")
-            // console.log("findtest: ", findItemOrder("1001707", standingOrders))
+
+
             const unprofitable = lowestSell * 0.85 - highestBid < MIN_PROFIT
-            // const unprofitable = lowestSell * 0.85 - highestBid < item.localPrice / 100000
+
 
             function extractMarketId(marketName: string) {
                 const match = marketName.match(/(?:^id|^ugcitem_)(\d+)/);
@@ -130,10 +132,16 @@ const checkStandingOrders = async () => {
 
 
             // const inv = await getInvAssets();
-            // console.log(item.market)
-            const normalID = extractMarketId(item.market)
-            if (!normalID) continue;
+            console.log(item.market)
+            let normalID = extractMarketId(item.market)
+            if (!normalID) {
+                console.log("market ID hatalı")
+                console.log(item)
+            };
 
+            normalID = item.mid
+
+            if(!normalID) {console.log("yine hatalı"); continue;}
 
 
 
@@ -145,20 +153,6 @@ const checkStandingOrders = async () => {
             if (userBid - lowestSell > 0.50) {
                 continue;
             }
-
-
-
-            console.log("DEBUG", {
-                unnecessarilyLowSell,
-                type: typeof unnecessarilyLowSell,
-                sell0: market.response.SELL[0][0],
-                sell1: market.response.SELL[1][0],
-                diff: market.response.SELL[1][0] - market.response.SELL[0][0],
-                userBid,
-                lowestSell,
-                condition1: unnecessarilyLowSell,
-                condition2: userBid > lowestSell,
-            })
 
             if (unnecessarilyLowSell || userBid > lowestSell) {
 
