@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "watcher": "ts-node ./dist/guard.js",
+    "watcher": "nodemon --watch src --ext ts --exec \"npm run build && node dist/guard.js\"",
     "start": "concurrently \"npm run build && node dist/app.js\" \"npm run watcher\" \"cd frontend && npm run dev\""
   },
   "keywords": [],
