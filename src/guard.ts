@@ -142,9 +142,9 @@ const checkStandingOrders = async () => {
                 continue;
             };
 
-            // if (userBid - lowestSell > 0.50) {
-            //     continue;
-            // }
+            if (userBid - lowestSell > 0.50) {
+                continue;
+            }
 
 
 
