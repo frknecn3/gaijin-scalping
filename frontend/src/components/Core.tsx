@@ -14,16 +14,17 @@ const Core = (props: Props) => {
   const [minVolume, setMinVolume] = useState<number>(0);
   const [minProfit, setMinProfit] = useState<number>(0);
   const [isRenewingOrders, setIsRenewingOrders] = useState<boolean>(false);
-  const [progress,setProgress] = useState<number>(0);
+  const [progress, setProgress] = useState<number>(0);
+  const [category, setCategory] = useState('')
 
 
-  const getItems = (): void => {
-    axios.get('http://localhost:4000/orders')
+  const getItems = async (): Promise<void> => {
+
+    console.log("istek atmak üzere ")
+    axios.get(`http://localhost:4000/orders?category=${category}`)
       .then(res => {
         setItems(res.data.data
-          .filter((item: HashType) => !item.tags.includes('type:key'))
-          .filter(((item: HashType) => !item.tags.includes('type:tank')))
-          .filter(((item: HashType) => !item.tags.includes('type:aircraft')))
+          .filter((item: HashType) => !item?.tags?.includes('type:key'))
           .sort((a: HashType, b: HashType) => b.last2Volume - a.last2Volume))
 
       })
@@ -33,10 +34,11 @@ const Core = (props: Props) => {
 
 
   useEffect(() => {
+    console.log("cat:", category);
 
     getItems()
 
-  }, [])
+  }, [category])
 
 
   useEffect(() => {
@@ -62,13 +64,13 @@ const Core = (props: Props) => {
       if (item.last2Volume <= minVolume) return false
       if (item.profit <= minProfit) return false
       return true
-    }).sort((a:HashType,b:HashType)=>b.profit - a.profit)
+    }).sort((a: HashType, b: HashType) => b.profit - a.profit)
   }, [items, minVolume, minProfit])
 
   return (
     <div className=''>
       <div className="pt-20 btn-panel flex flex-col sm:flex-row justify-center items-center gap-8">
-        <button className={`${isRenewingOrders ? "bg-yellow-600":"bg-green-500"} px-5 py-3 rounded-xl uppercase font-bold hover:${isRenewingOrders ? "bg-yellow-600":"bg-green-600"} transition border-2 border-transparent hover:border-white`}
+        <button className={`${isRenewingOrders ? "bg-yellow-600" : "bg-green-500"} px-5 py-3 rounded-xl uppercase font-bold hover:${isRenewingOrders ? "bg-yellow-600" : "bg-green-600"} transition border-2 border-transparent hover:border-white`}
           disabled={isRenewingOrders}
           onClick={async () => {
 
@@ -93,6 +95,17 @@ const Core = (props: Props) => {
         <div className="flex flex-col">
           <label htmlFor="">Min Profit</label>
           <input type="number" className='p-2 rounded-md' min={0.1} defaultValue={0.1} placeholder='Profit...' onChange={(e) => setMinProfit(Number(e.target.value))} />
+        </div>
+
+        <div className='flex flex-col'>
+          <label htmlFor="">Type</label>
+          <select name="category" id="category" onChange={(e) => setCategory(e.currentTarget.value)}>
+            <option defaultChecked disabled value=''>Select category</option>
+            <option value=''>All</option>
+            <option value='tank'>Tank</option>
+            <option value='aircraft'>Aircraft</option>
+            <option value='ship'>Ship</option>
+          </select>
         </div>
 
       </div>
