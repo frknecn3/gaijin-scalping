@@ -7,8 +7,7 @@ type Props = {
 }
 
 const ItemCard = ({ item }: Props) => {
-    const clr = hexToRgba(item.color.toString().toLowerCase(), 0.2)
-
+    const clr = hexToRgba(item.color?.toString().toLowerCase() || "#FF0000", 0.2)
 
     return (
         <a className={`border-2 min-h-[300px] rounded-xl pb-5 bg-[${clr}20]`} style={{
@@ -26,14 +25,14 @@ const ItemCard = ({ item }: Props) => {
                 <span>
                     selling at
                     <span className='text-2xl pt-5 text-red-600 ml-1'>
-                        {item.price.toFixed(2)} GJN
+                        {item.price?.toFixed(2)} GJN
                     </span>
                 </span>
 
                 <span>
                     buying at
                     <span className='text-2xl pt-5 text-green-400 ml-1'>
-                        {item.buy_price.toFixed(2)} GJN
+                        {item.buy_price?.toFixed(2)} GJN
                     </span>
                 </span>
 
