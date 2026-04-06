@@ -6,7 +6,7 @@ dotenv.config();
 
 // ================= CONFIG =================
 
-const MIN_PROFIT = 0.2;     // %8 net kâr
+const MIN_PROFIT = 0.10;     // %8 net kâr
 const FEE = 0.;            // %15 Gaijin komisyonu
 const COOLDOWN = 60_000;     // 60 saniye
 const DRY_RUN = true;        // true = sadece log
@@ -32,8 +32,13 @@ const checkStandingOrders = async () => {
     fs.writeFileSync('./data/orders.json', JSON.stringify(json.response))
 
 
+    
+    let pendingItems:any[] = [];
 
-    const pendingItems = [...json.response];
+    if(Array.isArray(json.response)){
+        pendingItems = [...json.response]
+    }
+
     // console.log(pendingItems.length)
 
     for (let i in pendingItems) {
@@ -63,11 +68,11 @@ const checkStandingOrders = async () => {
 
         if (item.type == "BUY") {
 
-            const unnecessarilyHighBuy =
+            const unnecessarilyHighBuy = item.localPrice == market.response.BUY[0][0] &&
                 market.response.BUY[0][0] - market.response.BUY[1][0] > 100
 
             console.log("market BUY DIFF 1/2: ", market.response.BUY[0][0] - market.response.BUY[1][0])
-
+            console.log('unnecessarily high? ', unnecessarilyHighBuy)
 
             console.log(item.localPrice / 10000, market.response.BUY[0][0] / 10000)
 
@@ -80,7 +85,7 @@ const checkStandingOrders = async () => {
             }
 
 
-            if (userBid < highestBid && (lowestSell * 0.85 - highestBid) > MIN_PROFIT) {
+            if (userBid < highestBid && (lowestSell * 0.85 - highestBid) > MIN_PROFIT || unnecessarilyHighBuy) {
 
                 const res1 = await marketPost({
                     action: "cancel_order",
@@ -117,7 +122,7 @@ const checkStandingOrders = async () => {
             console.log("Sell tipi işlem")
             // console.log("market SELL DIFF 1/2: ", market.response.SELL[0][0], market.response.SELL[1][0])
 
-            const unnecessarilyLowSell = market.response.SELL[1][0] - market.response.SELL[0][0] > 100
+            const unnecessarilyLowSell = item.localPrice == market.response.SELL[0][0] && market.response.SELL[1][0] - market.response.SELL[0][0] > 100
 
             if (unnecessarilyLowSell) console.log("çok uCUZA SATIYOZ")
 
@@ -137,11 +142,8 @@ const checkStandingOrders = async () => {
             if (!normalID) {
                 console.log("market ID hatalı")
                 console.log(item)
+                continue;
             };
-
-            normalID = item.mid
-
-            if(!normalID) {console.log("yine hatalı"); continue;}
 
 
 
