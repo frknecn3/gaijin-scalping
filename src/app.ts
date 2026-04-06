@@ -11,7 +11,7 @@ dotenv.config();
 // function sleep(ms:number) {
 //     return new Promise(res => setTimeout(res, ms));
 // }
-
+console.log("SERVERRR")
 
 const app = express();
 
@@ -41,7 +41,7 @@ app.get('/renewOrders', (req, res):void => {
 })
 
 app.get('/orders', async (req, res) => {
-
+    console.log("istek geldi")
     let items = JSON.parse(
         await fs.promises.readFile('./src/data/items.json', 'utf8')
     )
@@ -50,6 +50,13 @@ app.get('/orders', async (req, res) => {
         await fs.promises.writeFile('./src/data/items.json', JSON.stringify([]))
         items = [];
 
+    }
+
+    if(req.query.category) {
+        items = items.filter((item:any) => {
+            if(item.tags.includes(`type:${req.query.category}`))
+                return item
+        })
     }
 
     res.status(200).send({
