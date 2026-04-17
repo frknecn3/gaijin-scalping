@@ -100,11 +100,12 @@ const Core = (props: Props) => {
         <div className='flex flex-col'>
           <label htmlFor="">Type</label>
           <select name="category" id="category" onChange={(e) => setCategory(e.currentTarget.value)}>
-            <option defaultChecked disabled value=''>Select category</option>
+            <option defaultChecked disabled value='skin'>Select category</option>
             <option value=''>All</option>
             <option value='tank'>Tank</option>
             <option value='aircraft'>Aircraft</option>
             <option value='ship'>Ship</option>
+            <option value='skin'>Skin</option>
           </select>
         </div>
 
