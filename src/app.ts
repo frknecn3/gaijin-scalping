@@ -42,12 +42,13 @@ app.get('/renewOrders', (req, res):void => {
 
 app.get('/orders', async (req, res) => {
     console.log("istek geldi")
-    let items = JSON.parse(
-        await fs.promises.readFile('./src/data/items.json', 'utf8')
-    )
+    let items = fs.existsSync('./data/items.json') ? JSON.parse(
+        await fs.promises.readFile('./data/items.json', 'utf8')
+    ) : []
 
+    console.log("itemlar: ", items)
     if(!items) {
-        await fs.promises.writeFile('./src/data/items.json', JSON.stringify([]))
+        await fs.promises.writeFile('./data/items.json', JSON.stringify([]))
         items = [];
 
     }

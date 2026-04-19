@@ -19,10 +19,9 @@ const Core = (props: Props) => {
 
 
   const getItems = async (): Promise<void> => {
-
-    console.log("istek atmak üzere ")
     axios.get(`http://localhost:4000/orders?category=${category}`)
       .then(res => {
+        console.log(res);
         setItems(res.data.data
           .filter((item: HashType) => !item?.tags?.includes('type:key'))
           .sort((a: HashType, b: HashType) => b.last2Volume - a.last2Volume))
