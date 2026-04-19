@@ -1,12 +1,12 @@
 import dotenv from "dotenv";
 import fs from 'fs';
-
+import path from 'path'
 import { marketPost, post, sellerShouldGet, waitForAssetIdByMarketId } from "./helpers/helpers.js";
 dotenv.config();
 
 // ================= CONFIG =================
 
-const MIN_PROFIT = 0.15;     // %8 net kâr
+const MIN_PROFIT = 0.10;     // %8 net kâr
 const FEE = 0.3;            // %15 Gaijin komisyonu
 const COOLDOWN = 60_000;     // 60 saniye
 const DRY_RUN = true;        // true = sadece log
@@ -23,7 +23,17 @@ function sleep(ms: number) {
 
 const checkStandingOrders = async () => {
 
-    standingOrders = JSON.parse(fs.readFileSync('./data/orders.json', 'utf-8'));
+    const filePath = './data/orders.json';
+    const dirPath = path.dirname(filePath);
+
+    if (fs.existsSync('./data/orders.json')) {
+        standingOrders = JSON.parse(fs.readFileSync('./data/orders.json', 'utf-8')) || [];
+    }
+    else {
+        fs.mkdirSync(dirPath, { recursive: true });
+        fs.writeFileSync(filePath, JSON.stringify([]))
+    }
+
 
     const json = await post({ action: "cln_get_user_open_orders", token })
 
@@ -32,10 +42,10 @@ const checkStandingOrders = async () => {
     fs.writeFileSync('./data/orders.json', JSON.stringify(json.response))
 
 
-    
-    let pendingItems:any[] = [];
 
-    if(Array.isArray(json.response)){
+    let pendingItems: any[] = [];
+
+    if (Array.isArray(json.response)) {
         pendingItems = [...json.response]
     }
 
