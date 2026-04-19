@@ -109,7 +109,7 @@ export async function startRenewOrders(jobState:JobState) {
         )
 
         // ❗ make async
-        await fs.promises.writeFile('./src/data/items.json', jsonItems)
+        await fs.promises.writeFile('./data/items.json', jsonItems)
 
     } catch (err) {
         console.error(err)
