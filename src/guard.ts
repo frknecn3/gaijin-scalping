@@ -57,8 +57,6 @@ const checkStandingOrders = async () => {
         // console.log(pendingItems.length, "curindex: ", i)
 
         if (ignore.includes(item.market)) {
-
-            console.log("item umursanmıyor")
             continue
         };
 
@@ -77,6 +75,7 @@ const checkStandingOrders = async () => {
 
 
         if (item.type == "BUY") {
+            console.log("BUY:", item.market)
 
             const unnecessarilyHighBuy = item.localPrice == market.response.BUY[0][0] &&
                 market.response.BUY[0][0] - market.response.BUY[1][0] > 100
@@ -88,7 +87,7 @@ const checkStandingOrders = async () => {
 
             const unprofitable = lowestSell * 0.85 - highestBid < MIN_PROFIT
 
-            // console.log("profit ölçer:", lowestSell * 0.85, highestBid, unprofitable)
+            console.log("profit ölçer:", lowestSell * 0.85, highestBid, unprofitable)
 
             if (unprofitable) {
                 continue;
@@ -106,6 +105,9 @@ const checkStandingOrders = async () => {
 
                 // if (res1.success) console.log("iptal")
                 // else console.log(res1)
+
+                console.log("BUY:", item.market)
+
 
                 const res = await post({
                     action: "cln_market_buy",
@@ -147,7 +149,7 @@ const checkStandingOrders = async () => {
 
 
             // const inv = await getInvAssets();
-            console.log(item.market)
+            console.log("SELL:", item.market)
             let normalID = extractMarketId(item.market)
             if (!normalID) {
                 console.log("market ID hatalı")
@@ -157,10 +159,7 @@ const checkStandingOrders = async () => {
 
 
 
-            if (unprofitable) {
-                console.log("artık kârsız")
-                continue;
-            };
+
 
             if (userBid - lowestSell > 0.50) {
                 continue;
@@ -169,6 +168,11 @@ const checkStandingOrders = async () => {
             if (unnecessarilyLowSell || userBid > lowestSell) {
 
                 console.log("işlemi başlat")
+
+                if (unprofitable) {
+                    console.log("artık kârsız")
+                    continue;
+                };
                 const res1 = await marketPost({
                     action: "cancel_order",
                     pairId: item.pairId,
