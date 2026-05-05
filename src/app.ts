@@ -11,7 +11,6 @@ dotenv.config();
 // function sleep(ms:number) {
 //     return new Promise(res => setTimeout(res, ms));
 // }
-console.log("SERVERRR")
 
 const app = express();
 
@@ -41,12 +40,10 @@ app.get('/renewOrders', (req, res):void => {
 })
 
 app.get('/orders', async (req, res) => {
-    console.log("istek geldi")
     let items = fs.existsSync('./data/items.json') ? JSON.parse(
         await fs.promises.readFile('./data/items.json', 'utf8')
     ) : []
 
-    console.log("itemlar: ", items)
     if(!items) {
         await fs.promises.writeFile('./data/items.json', JSON.stringify([]))
         items = [];
