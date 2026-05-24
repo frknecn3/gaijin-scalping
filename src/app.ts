@@ -5,6 +5,7 @@ import express from 'express';
 import cors from 'cors';
 import { Response } from 'express';
 import { startRenewOrders } from './helpers/renewOrders.js';
+import axios from 'axios';
 dotenv.config();
 // Node 18+ (native fetch)
 
@@ -26,7 +27,7 @@ app.get('/progress', async (req, res) => {
 })
 
 
-app.get('/renewOrders', (req, res):void => {
+app.get('/renewOrders', (req, res): void => {
 
 
 
@@ -44,18 +45,33 @@ app.get('/orders', async (req, res) => {
         await fs.promises.readFile('./data/items.json', 'utf8')
     ) : []
 
-    if(!items) {
+    if (!items) {
         await fs.promises.writeFile('./data/items.json', JSON.stringify([]))
         items = [];
 
     }
 
-    if(req.query.category) {
-        items = items.filter((item:any) => {
-            if(item.tags.includes(`type:${req.query.category}`))
+    if (req.query.category) {
+        items = items.filter((item: any) => {
+            if (item.tags.includes(`type:${req.query.category}`))
                 return item
         })
     }
+
+    res.status(200).send({
+        success: true,
+        data: items,
+        message: "Ürünler gönderildi."
+    })
+
+})
+
+app.get('/item/:id', async (req, res) => {
+
+    const response = await fetch("https://market-proxy.gaijin.net/assetAPI", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+    });
 
     res.status(200).send({
         success: true,
