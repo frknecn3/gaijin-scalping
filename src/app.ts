@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import dotenv from 'dotenv';
-import { calculateLiquidityScore, getPairStat } from './helpers/helpers.js';
+import { calculateLiquidityScore, getPairStat, post } from './helpers/helpers.js';
 import express from 'express';
 import cors from 'cors';
 import { Response } from 'express';
@@ -28,14 +28,10 @@ app.get('/progress', async (req, res) => {
 
 
 app.get('/renewOrders', (req, res): void => {
-
-
-
-
     if (jobState.running) {
         res.status(400).send({ message: 'Already running' })
+        return  // ⬅️ stop here
     }
-
     startRenewOrders(jobState); // fire-and-forget
     res.send({ started: true })
 })
@@ -68,16 +64,37 @@ app.get('/orders', async (req, res) => {
 
 app.get('/item/:id', async (req, res) => {
 
-    const response = await fetch("https://market-proxy.gaijin.net/assetAPI", {
-        method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-    });
+    try {
+        const { id } = req.params;
 
-    res.status(200).send({
-        success: true,
-        data: items,
-        message: "Ürünler gönderildi."
-    })
+        const token = process.env.TOKEN;
+
+        const market = await post({
+            action: "cln_books_brief",
+            market_name: id,
+            appid: 1067,
+            token,
+        })
+
+        // console.log("market: \n\n", market)
+
+        res.status(200).send({
+            success: true,
+            data: {
+                id: id,
+                BUY: market.response.BUY[0][0],
+                SELL: market.response.SELL[0][0]
+            },
+            message: "Ürünler gönderildi."
+        })
+    }
+    catch (err) {
+        console.log("ERR ITEM ID: ", err)
+        res.status(500).send({
+            success: false,
+            err: err
+        })
+    }
 
 })
 

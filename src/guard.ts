@@ -6,14 +6,14 @@ dotenv.config();
 
 // ================= CONFIG =================
 
-const MIN_PROFIT = 0.10;     // %8 net kâr
+const MIN_PROFIT = 0.05;     // %8 net kâr
 const FEE = 0.3;            // %15 Gaijin komisyonu
 const COOLDOWN = 60_000;     // 60 saniye
 const DRY_RUN = true;        // true = sadece log
 const token = process.env.TOKEN;
 
 let standingOrders = [];
-const ignore: string[] = [];
+const ignore: string[] = ["'The Valkyries' trophy I"];
 
 function sleep(ms: number) {
     return new Promise(res => setTimeout(res, ms));
@@ -169,7 +169,7 @@ const checkStandingOrders = async () => {
 
                 console.log("işlemi başlat")
 
-                if (unprofitable) {
+                if (!unnecessarilyLowSell && unprofitable) {
                     console.log("artık kârsız")
                     continue;
                 };
@@ -272,7 +272,7 @@ const checkStandingOrders = async () => {
 checkStandingOrders();
 
 function scheduleNextRun() {
-    const x = 10
+    const x = 7
     const delaySec = Math.floor(Math.random() * (x - 1 + 1)) + 1; // 50–150
     const delayMs = delaySec * 1000;
 
