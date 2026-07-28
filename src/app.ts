@@ -1,11 +1,10 @@
 import * as fs from 'fs';
 import dotenv from 'dotenv';
-import { calculateLiquidityScore, getPairStat, post } from './helpers/helpers.js';
-import express from 'express';
+import {post } from './helpers/helpers.js';
+import express, { json } from 'express';
 import cors from 'cors';
-import { Response } from 'express';
 import { startRenewOrders } from './helpers/renewOrders.js';
-import axios from 'axios';
+import snipeBuyRouter from "./routers/snipeBuy.route.js";
 dotenv.config();
 // Node 18+ (native fetch)
 
@@ -16,6 +15,7 @@ dotenv.config();
 const app = express();
 
 app.use(cors())
+app.use(json())
 
 let jobState: JobState = {
     running: false,
@@ -97,6 +97,8 @@ app.get('/item/:id', async (req, res) => {
     }
 
 })
+
+app.use(snipeBuyRouter);
 
 app.listen(4000, () => {
     console.log('Sunucu 4000 portunu dinlemeye başladı.')
