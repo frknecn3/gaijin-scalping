@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import type { HashType } from '../utils/types'
 import { hexToRgba } from '../utils/helpers'
 import axios from 'axios'
+import SnipeBuyButton from './SnipeBuyButton'
 
 type Props = {
     item: HashType
@@ -64,8 +65,9 @@ const ItemCard = ({ item }: Props) => {
                     sold in 2 days
                 </span>
 
-                <div>
+                <div className='flex justify-between'>
                     <button className='bg-yellow-600 px-4 py-2 rounded-md' onClick={() => { handleRefresh() }}>REFRESH</button>
+                    <SnipeBuyButton item={item} />
                 </div>
             </div>
         </a>
