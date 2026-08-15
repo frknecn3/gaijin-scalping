@@ -13,7 +13,7 @@ const DRY_RUN = true;        // true = sadece log
 const token = process.env.TOKEN;
 
 let standingOrders = [];
-const ignore: string[] = ["'The Valkyries' trophy I"];
+const ignore: string[] = [];
 
 function sleep(ms: number) {
     return new Promise(res => setTimeout(res, ms));
