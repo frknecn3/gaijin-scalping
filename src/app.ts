@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import dotenv from 'dotenv';
-import {post } from './helpers/helpers.js';
+import { post } from './helpers/helpers.js';
 import express, { json } from 'express';
 import cors from 'cors';
 import { startRenewOrders } from './helpers/renewOrders.js';
@@ -76,7 +76,11 @@ app.get('/item/:id', async (req, res) => {
             token,
         })
 
-        // console.log("market: \n\n", market)
+        // let items = JSON.parse(await fs.promises.readFile('./data/items.json', 'utf-8'))
+
+        // items = items.map((i) => i.hash_name !== market.response.hash_name)
+
+        console.log("market: \n\n", market)
 
         res.status(200).send({
             success: true,
