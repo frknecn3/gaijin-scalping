@@ -15,5 +15,7 @@ export type HashType = {
   orgPrice: number,
   price: number,
   profit: number,
-  tags: string[]
+  tags: string[],
+  active_orders?: { type: string, localPrice: number, market: string }[],
+  highestOfLast10?: number
 }

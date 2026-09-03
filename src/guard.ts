@@ -1,19 +1,23 @@
 import dotenv from "dotenv";
 import fs from 'fs';
 import path from 'path'
-import { marketPost, post, sellerShouldGet, waitForAssetIdByMarketId } from "./helpers/helpers.js";
+import { marketPost, post, sellerShouldGet, waitForAssetIdByMarketId, getInvAssets } from "./helpers/helpers.js";
+import { getAvailableBases, addBasis } from "./helpers/basisTracker.js";
 dotenv.config();
 
 // ================= CONFIG =================
 
-const MIN_PROFIT = 0.05;     // %8 net kâr
+const MIN_PROFIT = 0.01;     // %8 net kâr
 const FEE = 0.3;            // %15 Gaijin komisyonu
 const COOLDOWN = 60_000;     // 60 saniye
 const DRY_RUN = true;        // true = sadece log
 const token = process.env.TOKEN;
 
-let standingOrders = [];
+let standingOrders: any[] = [];
 const ignore: string[] = [];
+const ignoreBasisItems: string[] = []; // Items in this list will be sold regardless of profitability
+const IGNORE_ALL_BASIS = true; // Set to true to bypass basis checks for all items (liquidate mode)
+const cancelledOrders = new Set<number>();
 
 function sleep(ms: number) {
     return new Promise(res => setTimeout(res, ms));
@@ -27,7 +31,13 @@ const checkStandingOrders = async () => {
     const dirPath = path.dirname(filePath);
 
     if (fs.existsSync('./data/orders.json')) {
-        standingOrders = JSON.parse(fs.readFileSync('./data/orders.json', 'utf-8')) || [];
+        try {
+            const fileContent = fs.readFileSync('./data/orders.json', 'utf-8').trim();
+            standingOrders = fileContent ? JSON.parse(fileContent) : [];
+        } catch (e: any) {
+            console.error("Error parsing orders.json, defaulting to empty array:", e.message);
+            standingOrders = [];
+        }
     }
     else {
         fs.mkdirSync(dirPath, { recursive: true });
@@ -37,24 +47,33 @@ const checkStandingOrders = async () => {
 
     const json = await post({ action: "cln_get_user_open_orders", token })
 
-    // console.log(json.response)
-
-    fs.writeFileSync('./data/orders.json', JSON.stringify(json.response))
+    fs.writeFileSync('./data/orders.json', JSON.stringify(json.response || []))
 
 
 
     let pendingItems: any[] = [];
+    const newSellOrdersCount: Record<string, number> = {};
 
     if (Array.isArray(json.response)) {
         pendingItems = [...json.response]
     }
+    const activeOrdersTracker: any[] = [...pendingItems];
 
-    // console.log(pendingItems.length)
+    // Check for fulfilled BUY orders
+    for (const oldOrder of standingOrders) {
+        if (oldOrder.type === "BUY") {
+            const stillOpen = pendingItems.find((o: any) => o.id === oldOrder.id);
+            if (!stillOpen && !cancelledOrders.has(oldOrder.id)) {
+                console.log(`[BasisTracker] BUY order fulfilled for ${oldOrder.market} at ${oldOrder.localPrice / 10000}`);
+                addBasis(oldOrder.market, oldOrder.localPrice / 10000);
+            }
+        }
+    }
+
+    const assignedBasesIndex: Record<string, number> = {};
 
     for (let i in pendingItems) {
         const item = pendingItems[i]
-
-        // console.log(pendingItems.length, "curindex: ", i)
 
         if (ignore.includes(item.market)) {
             continue
@@ -69,21 +88,40 @@ const checkStandingOrders = async () => {
             token,
         })
 
-        const highestBid = market.response.BUY[0][0] / 10000;
-        const lowestSell = market.response.SELL[0][0] / 10000
+        let trueHighestCompetitorBuy: number | null = null;
+        for (const [priceStr, amount] of market.response.BUY) {
+            const price = priceStr / 10000;
+            const ourOrdersCount = activeOrdersTracker.filter(o => o.type === "BUY" && o.market === item.market && o.localPrice / 10000 === price).length;
+            if (amount > ourOrdersCount) {
+                trueHighestCompetitorBuy = price;
+                break;
+            }
+        }
+        if (trueHighestCompetitorBuy === null) trueHighestCompetitorBuy = 0;
+
+        let trueLowestCompetitorSell: number | null = null;
+        for (const [priceStr, amount] of market.response.SELL) {
+            const price = priceStr / 10000;
+            const ourOrdersCount = activeOrdersTracker.filter(o => o.type === "SELL" && o.market === item.market && o.localPrice / 10000 === price).length;
+            if (amount > ourOrdersCount) {
+                trueLowestCompetitorSell = price;
+                break;
+            }
+        }
+        if (trueLowestCompetitorSell === null) trueLowestCompetitorSell = (market.response.BUY[0]?.[0] / 10000) + 0.01 || 0;
+
+        const highestBid = trueHighestCompetitorBuy;
+        const lowestSell = trueLowestCompetitorSell;
 
 
 
         if (item.type == "BUY") {
             console.log("BUY:", item.market)
 
-            const unnecessarilyHighBuy = item.localPrice == market.response.BUY[0][0] &&
-                market.response.BUY[0][0] - market.response.BUY[1][0] > 100
+            const unnecessarilyHighBuy = (item.localPrice / 10000) > (trueHighestCompetitorBuy + 0.01) + 0.005;
 
-            console.log("market BUY DIFF 1/2: ", market.response.BUY[0][0] - market.response.BUY[1][0])
-            console.log('unnecessarily high? ', unnecessarilyHighBuy)
-
-            console.log(item.localPrice / 10000, market.response.BUY[0][0] / 10000)
+            console.log("unnecessarily high? ", unnecessarilyHighBuy)
+            console.log(item.localPrice / 10000, trueHighestCompetitorBuy)
 
             const unprofitable = lowestSell * 0.85 - highestBid < MIN_PROFIT
 
@@ -96,6 +134,10 @@ const checkStandingOrders = async () => {
 
             if (userBid < highestBid && (lowestSell * 0.85 - highestBid) > MIN_PROFIT || unnecessarilyHighBuy) {
 
+                cancelledOrders.add(item.id);
+                const idx = activeOrdersTracker.findIndex(o => o.id === item.id);
+                if (idx !== -1) activeOrdersTracker.splice(idx, 1);
+
                 const res1 = await marketPost({
                     action: "cancel_order",
                     pairId: item.pairId,
@@ -103,17 +145,20 @@ const checkStandingOrders = async () => {
                     token
                 })
 
-                // if (res1.success) console.log("iptal")
-                // else console.log(res1)
+                if (!res1?.response?.success) {
+                    console.log("Failed to cancel BUY order, skipping relist.");
+                    continue;
+                }
 
                 console.log("BUY:", item.market)
 
+                const priceToSet = Math.round((trueHighestCompetitorBuy + 0.01) * 10000);
 
                 const res = await post({
                     action: "cln_market_buy",
                     orderId: item.id,
                     pairId: item.pairId,
-                    price: (unnecessarilyHighBuy ? market.response.BUY[1][0] : market.response.BUY[0][0]) + 100,
+                    price: priceToSet,
                     privateMode: true,
                     appid: 1067,
                     market_name: item.market,
@@ -124,22 +169,29 @@ const checkStandingOrders = async () => {
                     token
                 })
 
-                // console.log(res.response)
-                // console.log("yeniden koyduk")
+                if (res?.response?.success) {
+                    activeOrdersTracker.push({
+                        type: "BUY",
+                        market: item.market,
+                        localPrice: priceToSet
+                    });
+                }
             }
-            // else console.log("EN YÜKSEK BİD BİZİM")
         }
         else {
 
             console.log("Sell tipi işlem")
-            // console.log("market SELL DIFF 1/2: ", market.response.SELL[0][0], market.response.SELL[1][0])
 
-            const unnecessarilyLowSell = item.localPrice == market.response.SELL[0][0] && market.response.SELL[1][0] - market.response.SELL[0][0] > 100
+            const unnecessarilyLowSell = (item.localPrice / 10000) < (trueLowestCompetitorSell - 0.01) - 0.005;
 
             if (unnecessarilyLowSell) console.log("çok uCUZA SATIYOZ")
 
+            const basisIndex = assignedBasesIndex[item.market] || 0;
+            assignedBasesIndex[item.market] = basisIndex + 1;
+            const availableBases = getAvailableBases(item.market);
+            const trueBasis = availableBases[basisIndex] || highestBid; // Fallback to highestBid if not found
 
-            const unprofitable = lowestSell * 0.85 - highestBid < MIN_PROFIT
+            const unprofitable = !IGNORE_ALL_BASIS && !ignoreBasisItems.includes(item.market) && (lowestSell * 0.85 - trueBasis < MIN_PROFIT);
 
 
             function extractMarketId(marketName: string) {
@@ -147,8 +199,6 @@ const checkStandingOrders = async () => {
                 return match ? Number(match[1]) : null;
             }
 
-
-            // const inv = await getInvAssets();
             console.log("SELL:", item.market)
             let normalID = extractMarketId(item.market)
             if (!normalID) {
@@ -156,10 +206,6 @@ const checkStandingOrders = async () => {
                 console.log(item)
                 continue;
             };
-
-
-
-
 
             if (userBid - lowestSell > 0.50) {
                 continue;
@@ -173,6 +219,11 @@ const checkStandingOrders = async () => {
                     console.log("artık kârsız")
                     continue;
                 };
+
+                cancelledOrders.add(item.id);
+                const idx = activeOrdersTracker.findIndex(o => o.id === item.id);
+                if (idx !== -1) activeOrdersTracker.splice(idx, 1);
+
                 const res1 = await marketPost({
                     action: "cancel_order",
                     pairId: item.pairId,
@@ -182,9 +233,19 @@ const checkStandingOrders = async () => {
 
                 console.log(res1)
 
+                if (!res1?.response?.success) {
+                    console.log("Failed to cancel order, skipping relist to avoid orphaned items.");
+                    continue;
+                }
+
                 if (!normalID) continue;
 
                 const assetID = await waitForAssetIdByMarketId(normalID)
+
+                if (!assetID) {
+                    console.log("Failed to get assetID, orphaned item possibly generated.");
+                    continue;
+                }
 
                 console.log("satılacak itemın assetIDsi:", assetID)
 
@@ -194,7 +255,7 @@ const checkStandingOrders = async () => {
                     market_name: item.market
                 })
 
-                const price = unnecessarilyLowSell ? market.response.SELL[1][0] - 100 : Math.round((lowestSell - 0.01) * 10000)
+                const price = Math.round((trueLowestCompetitorSell - 0.01) * 10000);
 
                 const res = await post({
                     action: "cln_market_sell",
@@ -213,66 +274,110 @@ const checkStandingOrders = async () => {
                     privateMode: false,
                 })
 
-
-                if (res.response.error == "WRONG_PRICE") {
-                    console.log("\n\n")
-                    console.log("yanlış fiyat\n")
-                    console.log(
-                        `low-1: ${lowestSell - 0.01} \n
-                            designated: ${price}
-                            lowestSell: ${lowestSell}
-                            rawSell: ${market.response.SELL[0][0]}
-                            rawBuy: ${market.response.BUY[0][0]}
-                        `)
-                    console.log("\n\n")
+                if (res?.response?.error == "WRONG_PRICE") {
+                    console.log("\n\nyanlış fiyat\n\n")
+                } else if (res?.response?.success) {
+                    newSellOrdersCount[item.market] = (newSellOrdersCount[item.market] || 0) + 1;
+                    activeOrdersTracker.push({
+                        type: "SELL",
+                        market: item.market,
+                        localPrice: price
+                    });
                 }
-            }
-
-            const secondLowestSell = market.response.SELL[1][0] / 10000
-
-
-
-            // TODO çok ucuza gitmeme kısmı
-            if (Number((secondLowestSell - item.localPrice / 10000).toFixed(2)) != 0.00 && Number((secondLowestSell - item.localPrice / 10000).toFixed(2)) < 0.01) {
-
-                const res1 = await marketPost({
-                    action: "cancel_order",
-                    pairId: item.pairId,
-                    orderId: item.id,
-                    token
-                })
-
-                const assetID = await waitForAssetIdByMarketId(normalID).catch((err: Error) => console.log(err))
-
-                const res = await post({
-                    action: "cln_market_sell",
-                    token: process.env.SELLTOKEN,
-                    transactid: Math.round(Math.random() * 100000),
-                    reqstamp: Date.now(),
-                    appid: 1067,
-                    contextid: 1,
-                    assetid: assetID,
-                    amount: 1,
-                    currencyid: "gjn",
-                    price: (secondLowestSell - 0.01) * 10000,
-                    seller_should_get: sellerShouldGet((secondLowestSell - 0.01) * 10000),
-                    agree_stamp: Date.now(),
-                    market_name: item.market,
-                    privateMode: true,
-                })
             }
         }
 
-
-
     }
 
+    // ==========================================
+    // INVENTORY AUTO-LISTER
+    // ==========================================
+    try {
+        const inv = await getInvAssets();
+
+        let idMap: Record<string, number> = {};
+        if (fs.existsSync('./data/id_map.json')) {
+            idMap = JSON.parse(fs.readFileSync('./data/id_map.json', 'utf-8')) || {};
+        }
+        const normalIdToMarketName: { [id: string]: string } = {};
+        for (const [marketName, normalId] of Object.entries(idMap)) {
+            normalIdToMarketName[normalId] = marketName;
+        }
+
+        const invByMarket: { [market: string]: any[] } = {};
+        for (const item of inv) {
+            const market = normalIdToMarketName[item.id];
+            if (market) {
+                if (!invByMarket[market]) invByMarket[market] = [];
+                invByMarket[market].push(item);
+            }
+        }
+
+        const activeSellOrdersByMarket: Record<string, number> = {};
+        for (const item of pendingItems) {
+            if (item.type === "SELL" && !cancelledOrders.has(item.id)) {
+                activeSellOrdersByMarket[item.market] = (activeSellOrdersByMarket[item.market] || 0) + 1;
+            }
+        }
+
+        for (const market in invByMarket) {
+            if (ignore.includes(market)) continue;
+
+            const idleItems = invByMarket[market];
+            const activeSellOrdersCount = (activeSellOrdersByMarket[market] || 0) + (newSellOrdersCount[market] || 0);
+            const availableBases = getAvailableBases(market);
+
+            if (idleItems.length > 0) {
+                const marketBooks = await post({
+                    action: "cln_books_brief",
+                    market_name: market,
+                    appid: 1067,
+                    token
+                });
+
+                if (!marketBooks?.response?.SELL || !marketBooks?.response?.BUY) continue;
+                const lowestSell = marketBooks.response.SELL[0]?.[0] / 10000;
+                const highestBid = marketBooks.response.BUY[0]?.[0] / 10000;
+
+                for (let i = 0; i < idleItems.length; i++) {
+                    const unassignedBaseIndex = activeSellOrdersCount + i;
+                    const basis = availableBases[unassignedBaseIndex] || highestBid; // FALLBACK BASIS
+                    const targetPrice = lowestSell - 0.01;
+                    const profit = targetPrice * 0.85 - basis;
+
+                    if (profit >= MIN_PROFIT || IGNORE_ALL_BASIS || ignoreBasisItems.includes(market)) {
+                        const assetId = idleItems[i].assetId;
+                        console.log(`[Auto-Lister] Listing ${market} from inventory! Basis: ${basis} (Fallback: ${!availableBases[unassignedBaseIndex]}, Ignored: ${IGNORE_ALL_BASIS || ignoreBasisItems.includes(market)}), Sell Price: ${targetPrice.toFixed(2)}, Profit: ${profit.toFixed(2)}`);
+                        const price = Math.round(targetPrice * 10000);
+                        await post({
+                            action: "cln_market_sell",
+                            token: process.env.SELLTOKEN || token,
+                            transactid: Math.round(Math.random() * 100000),
+                            reqstamp: Date.now(),
+                            appid: 1067,
+                            contextid: 1,
+                            assetid: assetId,
+                            amount: 1,
+                            currencyid: "gjn",
+                            price,
+                            seller_should_get: sellerShouldGet(price),
+                            agree_stamp: Date.now(),
+                            market_name: market,
+                            privateMode: false
+                        });
+                    }
+                }
+            }
+        }
+    } catch (err) {
+        console.error("⚠️ Auto-Lister error:", err);
+    }
 }
 
 checkStandingOrders();
 
 function scheduleNextRun() {
-    const x = 7
+    const x = 3
     const delaySec = Math.floor(Math.random() * (x - 1 + 1)) + 1; // 50–150
     const delayMs = delaySec * 1000;
 
@@ -290,12 +395,10 @@ function scheduleNextRun() {
         } catch (err) {
             console.error("⚠️ checkStandingOrders error:", err);
         } finally {
-            // 🔑 NE OLURSA OLSUN DEVAM
             scheduleNextRun();
         }
     }, delayMs);
 }
 
 
-// ilk başlatma
 scheduleNextRun();

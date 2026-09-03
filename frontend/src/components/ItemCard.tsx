@@ -22,11 +22,29 @@ const ItemCard = ({ item }: Props) => {
         setUpdatedVal({ buy: res.data.data.BUY, sell: res.data.data.SELL })
     }
 
+    const buyOrders = item.active_orders?.filter(o => o.type === "BUY") || [];
+    const sellOrders = item.active_orders?.filter(o => o.type === "SELL") || [];
+    const hasBuy = buyOrders.length > 0;
+    const hasSell = sellOrders.length > 0;
+
     return (
-        <a className={`border-2 min-h-[300px] rounded-xl pb-5 bg-[${clr}20]`} style={{
+        <a className={`relative border-2 min-h-[300px] rounded-xl pb-5 bg-[${clr}20]`} style={{
             borderColor: clr,
             backgroundColor: clr,
         }}>
+            
+            {hasBuy && (
+                <div className="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-bold shadow-md z-10">
+                    Buying ({buyOrders.length})
+                </div>
+            )}
+            
+            {hasSell && (
+                <div className={`absolute ${hasBuy ? 'top-10' : 'top-2'} right-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-bold shadow-md z-10`}>
+                    Selling ({sellOrders.length})
+                </div>
+            )}
+
             <div className='bg-black rounded-t-xl'>
                 <img className='aspect-[9/5] w-full rounded-t-xl' src={item.icon} alt="" />
             </div>
@@ -64,6 +82,12 @@ const ItemCard = ({ item }: Props) => {
                     </span>
                     sold in 2 days
                 </span>
+
+                {item.highestOfLast10 ? (
+                    <span className='text-sm text-gray-400'>
+                        recent high: <span className='text-white font-bold'>{item.highestOfLast10.toFixed(2)} GJN</span>
+                    </span>
+                ) : null}
 
                 <div className='flex justify-between'>
                     <button className='bg-yellow-600 px-4 py-2 rounded-md' onClick={() => { handleRefresh() }}>REFRESH</button>

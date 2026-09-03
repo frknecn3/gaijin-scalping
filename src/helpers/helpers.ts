@@ -90,7 +90,7 @@ async function getPairStat(marketName:string) {
     return null;
   }
 
-  return json.response["1d"];
+  return json.response;
 }
 
 async function waitForAssetIdByMarketId(normalID:number, timeoutMs = 15000) {

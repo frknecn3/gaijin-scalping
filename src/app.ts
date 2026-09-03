@@ -32,14 +32,21 @@ app.get('/renewOrders', (req, res): void => {
         res.status(400).send({ message: 'Already running' })
         return  // ⬅️ stop here
     }
-    startRenewOrders(jobState); // fire-and-forget
+    const isHardRefresh = req.query.hard === 'true';
+    startRenewOrders(jobState, isHardRefresh); // fire-and-forget
     res.send({ started: true })
 })
 
 app.get('/orders', async (req, res) => {
-    let items = fs.existsSync('./data/items.json') ? JSON.parse(
-        await fs.promises.readFile('./data/items.json', 'utf8')
-    ) : []
+    let items = [];
+    if (fs.existsSync('./data/items.json')) {
+        try {
+            const content = await fs.promises.readFile('./data/items.json', 'utf8');
+            items = content.trim() ? JSON.parse(content) : [];
+        } catch (e) {
+            console.error("Error parsing items.json:", e);
+        }
+    }
 
     if (!items) {
         await fs.promises.writeFile('./data/items.json', JSON.stringify([]))
@@ -54,9 +61,37 @@ app.get('/orders', async (req, res) => {
         })
     }
 
+    let openOrders = [];
+    if (fs.existsSync('./data/orders.json')) {
+        try {
+            const content = await fs.promises.readFile('./data/orders.json', 'utf8');
+            openOrders = content.trim() ? JSON.parse(content) : [];
+        } catch (e) {
+            console.error("Error parsing orders.json:", e);
+        }
+    }
+
+    items = items.map((item: any) => {
+        return {
+            ...item,
+            active_orders: openOrders.filter((o: any) => o.market === item.hash_name)
+        }
+    });
+
+    let totalBuy = 0;
+    let totalSell = 0;
+    for (const o of openOrders) {
+        if (o.type === "BUY") totalBuy += (o.localPrice / 10000);
+        if (o.type === "SELL") totalSell += (o.localPrice / 10000) * 0.85;
+    }
+
     res.status(200).send({
         success: true,
         data: items,
+        totals: {
+            buy: totalBuy,
+            sell: totalSell
+        },
         message: "Ürünler gönderildi."
     })
 

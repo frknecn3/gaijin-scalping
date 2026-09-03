@@ -4,7 +4,7 @@ import fs from 'fs';
 
 
 
-export async function startRenewOrders(jobState:JobState) {
+export async function startRenewOrders(jobState: JobState, isHardRefresh: boolean = false) {
     jobState.running = true
     jobState.percent = 0
 
@@ -61,9 +61,16 @@ export async function startRenewOrders(jobState:JobState) {
             skip += COUNT;
         }
 
+        // Save an un-filtered map of market names to IDs so guard.ts never loses track of dead items
+        const idMap: Record<string, number> = {};
+        for (const i of allItems) {
+            const defIdObj = i.asset_class?.find((c: any) => c.name === "__itemdefid");
+            if (defIdObj) idMap[i.hash_name] = Number(defIdObj.value);
+        }
+        await fs.promises.writeFile('./data/id_map.json', JSON.stringify(idMap));
+
         allItems = allItems
             .map((item) => {
-
                 const newPrice = (item.price / 100000000) * 0.85
                 const newSellPrice = item.buy_price / 100000000
 
@@ -75,34 +82,62 @@ export async function startRenewOrders(jobState:JobState) {
                     profit: (newPrice - 0.01) - (newSellPrice + 0.01)
                 }
             })
+            .filter((item) => {
+                if (isHardRefresh) return true; // Keep all items for a deep scan
 
-        const enrichedItems = []
+                // Minimum requirements to even deserve an API call
+                if (!item.buy_depth || item.buy_depth <= 5) return false;
+                if (!item.depth || item.depth === 0) return false;
+                if (item.buy_price === 0) return false;
+                if (item.profit < 0) return false; // Must be at least slightly profitable mathematically
 
-        for (let i = 0; i < allItems.length; i++) {
-            const item = allItems[i]
+                return true;
+            })
 
-            try {
-                const stat1d = await getPairStat(item.hash_name)
-                if (!stat1d) continue
+        const enrichedItems: any[] = []
+        const CONCURRENCY = isHardRefresh ? 5 : 20; // Lower concurrency to prevent rate-limit crashes
 
-                const liquidity = calculateLiquidityScore(stat1d, item)
+        for (let i = 0; i < allItems.length; i += CONCURRENCY) {
+            const chunk = allItems.slice(i, i + CONCURRENCY);
 
-                enrichedItems.push({
-                    ...item,
-                    ...liquidity
-                })
+            await Promise.all(chunk.map(async (item) => {
+                try {
+                    const pairStat = await getPairStat(item.hash_name);
+                    if (!pairStat || !pairStat["1d"]) return;
+                    
+                    const stat1d = pairStat["1d"];
+                    const stat1h = pairStat["1h"] || [];
 
-                jobState.percent = Math.round(((i + 1) / allItems.length) * 100)
+                    const liquidity = calculateLiquidityScore(stat1d, item);
 
-                if (i % 5 === 0) {
-                    await new Promise(res => setTimeout(res, 0))
+                    const last10 = stat1h.slice(-10);
+                    const nowInSeconds = Math.floor(Date.now() / 1000);
+                    const threeHoursInSeconds = 3 * 60 * 60;
+                    const validRecentTransactions = last10.filter((d: any) => (nowInSeconds - d[0]) <= threeHoursInSeconds);
+
+                    const highestOfLast10 = validRecentTransactions.length > 0 
+                        ? Math.max(...validRecentTransactions.map((d: any) => d[1] / 10000))
+                        : 0;
+
+                    // Final hard-check: skip dead volume items, UNLESS it's a brand new item (<= 3 days of history)
+                    if (!isHardRefresh && liquidity.last2Volume === 0 && stat1d.length > 3) return;
+
+                    enrichedItems.push({
+                        ...item,
+                        ...liquidity,
+                        highestOfLast10
+                    });
+                } catch (err) {
+                    console.log("HATA:", item.name);
                 }
+            }));
 
-            } catch (err) {
-                console.log("HATA:", item.name)
+            if (isHardRefresh) {
+                await new Promise(res => setTimeout(res, 300)); // Rate limit protection for deep scans
             }
-        }
 
+            jobState.percent = Math.round(((Math.min(i + CONCURRENCY, allItems.length)) / allItems.length) * 100);
+        }
 
         const jsonItems = JSON.stringify(
             enrichedItems.sort((a, b) => a.last2Volume - b.last2Volume)
