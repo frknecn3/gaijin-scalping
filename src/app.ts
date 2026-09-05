@@ -4,6 +4,7 @@ import { post } from './helpers/helpers.js';
 import express, { json } from 'express';
 import cors from 'cors';
 import { startRenewOrders } from './helpers/renewOrders.js';
+import db from './db/database.js';
 import snipeBuyRouter from "./routers/snipeBuy.route.js";
 dotenv.config();
 // Node 18+ (native fetch)
@@ -37,22 +38,31 @@ app.get('/renewOrders', (req, res): void => {
     res.send({ started: true })
 })
 
-app.get('/orders', async (req, res) => {
-    let items = [];
-    if (fs.existsSync('./data/items.json')) {
-        try {
-            const content = await fs.promises.readFile('./data/items.json', 'utf8');
-            items = content.trim() ? JSON.parse(content) : [];
-        } catch (e) {
-            console.error("Error parsing items.json:", e);
+// Continuous Autonomous Engine
+async function autoRefreshLoop() {
+    console.log("[AUTO-REFRESH] Autonomous engine started.");
+    let scanCount = 0;
+    while (true) {
+        if (!jobState.running) {
+            scanCount++;
+            const isHardScan = (scanCount % 10 === 0);
+            
+            console.log(`[AUTO-REFRESH] Triggering new scan (Scan #${scanCount}, Hard Scan: ${isHardScan})...`);
+            
+            await startRenewOrders(jobState, isHardScan);
+            
+            console.log(`[AUTO-REFRESH] Scan #${scanCount} complete. Waiting 5 seconds before next cycle...`);
         }
+        await new Promise(res => setTimeout(res, 5000));
     }
+}
 
-    if (!items) {
-        await fs.promises.writeFile('./data/items.json', JSON.stringify([]))
-        items = [];
+// Start the engine
+autoRefreshLoop();
 
-    }
+app.get('/orders', async (req, res) => {
+    const itemsQuery = db.prepare('SELECT data FROM Items').all() as { data: string }[];
+    let items = itemsQuery.map(row => JSON.parse(row.data));
 
     if (req.query.category) {
         items = items.filter((item: any) => {
@@ -61,15 +71,8 @@ app.get('/orders', async (req, res) => {
         })
     }
 
-    let openOrders = [];
-    if (fs.existsSync('./data/orders.json')) {
-        try {
-            const content = await fs.promises.readFile('./data/orders.json', 'utf8');
-            openOrders = content.trim() ? JSON.parse(content) : [];
-        } catch (e) {
-            console.error("Error parsing orders.json:", e);
-        }
-    }
+    const ordersQuery = db.prepare('SELECT * FROM Orders').all() as any[];
+    let openOrders = ordersQuery;
 
     items = items.map((item: any) => {
         return {

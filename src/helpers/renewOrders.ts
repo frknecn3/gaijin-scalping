@@ -1,4 +1,5 @@
-import { calculateLiquidityScore, getPairStat } from "./helpers.js"
+import { calculateLiquidityScore, getPairStat } from "./helpers.js";
+import db from "../db/database.js";
 import fs from 'fs';
 
 
@@ -9,7 +10,7 @@ export async function startRenewOrders(jobState: JobState, isHardRefresh: boolea
     jobState.percent = 0
 
     try {
-        let allItems = []
+        let allItems: any[] = [];
         let skip = 0
         const COUNT = 100
 
@@ -62,13 +63,15 @@ export async function startRenewOrders(jobState: JobState, isHardRefresh: boolea
         }
 
         // Save an un-filtered map of market names to IDs so guard.ts never loses track of dead items
-        const idMap: Record<string, number> = {};
-        for (const i of allItems) {
-            const defIdObj = i.asset_class?.find((c: any) => c.name === "__itemdefid");
-            if (defIdObj) idMap[i.hash_name] = Number(defIdObj.value);
-        }
-        await fs.promises.writeFile('./data/id_map.json', JSON.stringify(idMap));
-
+        const insertIdMap = db.prepare('INSERT OR REPLACE INTO IdMap (market_name, asset_id) VALUES (@market_name, @asset_id)');
+        db.transaction(() => {
+            for (const i of allItems) {
+                const defIdObj = i.asset_class?.find((c: any) => c.name === "__itemdefid");
+                if (defIdObj) {
+                    insertIdMap.run({ market_name: i.hash_name, asset_id: Number(defIdObj.value) });
+                }
+            }
+        })();
         allItems = allItems
             .map((item) => {
                 const newPrice = (item.price / 100000000) * 0.85
@@ -139,12 +142,32 @@ export async function startRenewOrders(jobState: JobState, isHardRefresh: boolea
             jobState.percent = Math.round(((Math.min(i + CONCURRENCY, allItems.length)) / allItems.length) * 100);
         }
 
-        const jsonItems = JSON.stringify(
-            enrichedItems.sort((a, b) => a.last2Volume - b.last2Volume)
-        )
+        const sortedItems = enrichedItems.sort((a, b) => a.last2Volume - b.last2Volume);
 
-        // ❗ make async
-        await fs.promises.writeFile('./data/items.json', jsonItems)
+        const insertItem = db.prepare('INSERT OR REPLACE INTO Items (hash_name, data) VALUES (@hash_name, @data)');
+        
+        const getStreak = db.prepare('SELECT streak FROM ItemStreaks WHERE market_name = ?');
+        const updateStreak = db.prepare('INSERT OR REPLACE INTO ItemStreaks (market_name, streak) VALUES (@market_name, @streak)');
+
+        const MIN_PROFIT = 0.05; // GJN
+
+        db.transaction(() => {
+            // First clear all existing items so we don't keep stale ones
+            db.prepare('DELETE FROM Items').run();
+            for (const item of sortedItems) {
+                // Determine streak
+                let streak = 0;
+                if (item.profit >= MIN_PROFIT) {
+                    const row = getStreak.get(item.hash_name) as { streak: number } | undefined;
+                    streak = (row ? row.streak : 0) + 1;
+                }
+                updateStreak.run({ market_name: item.hash_name, streak });
+
+                // Attach streak to item data so frontend or scanner can easily read it
+                const itemData = { ...item, profit_streak: streak };
+                insertItem.run({ hash_name: item.hash_name, data: JSON.stringify(itemData) });
+            }
+        })();
 
     } catch (err) {
         console.error(err)

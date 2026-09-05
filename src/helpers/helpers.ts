@@ -110,22 +110,46 @@ async function waitForAssetIdByMarketId(normalID:number, timeoutMs = 15000) {
   return null;
 }
 
-async function post(body:any) {
-  const res = await fetch("https://market-proxy.gaijin.net/web", {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(body)
-  });
-  return res.json();
+async function post(body:any, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch("https://market-proxy.gaijin.net/web", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams(body)
+      });
+      if (res.status === 429) {
+        console.warn(`[API] 429 Too Many Requests (post). Retrying in ${Math.pow(2, i)}s...`);
+        await sleep(Math.pow(2, i) * 1000);
+        continue;
+      }
+      return await res.json();
+    } catch (e) {
+      if (i === retries - 1) throw e;
+      await sleep(Math.pow(2, i) * 1000);
+    }
+  }
 }
 
-async function marketPost(body:any) {
-  const res = await fetch("https://market-proxy.gaijin.net/market", {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(body)
-  });
-  return res.json();
+async function marketPost(body:any, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch("https://market-proxy.gaijin.net/market", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams(body)
+      });
+      if (res.status === 429) {
+        console.warn(`[API] 429 Too Many Requests (marketPost). Retrying in ${Math.pow(2, i)}s...`);
+        await sleep(Math.pow(2, i) * 1000);
+        continue;
+      }
+      return await res.json();
+    } catch (e) {
+      if (i === retries - 1) throw e;
+      await sleep(Math.pow(2, i) * 1000);
+    }
+  }
 }
 
 function sellerShouldGet(price:number) {

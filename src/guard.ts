@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path'
 import { marketPost, post, sellerShouldGet, waitForAssetIdByMarketId, getInvAssets } from "./helpers/helpers.js";
 import { getAvailableBases, addBasis } from "./helpers/basisTracker.js";
+import db from "./db/database.js";
 dotenv.config();
 
 // ================= CONFIG =================
@@ -27,27 +28,24 @@ function sleep(ms: number) {
 
 const checkStandingOrders = async () => {
 
-    const filePath = './data/orders.json';
-    const dirPath = path.dirname(filePath);
+    standingOrders = db.prepare('SELECT * FROM Orders').all() as any[];
 
-    if (fs.existsSync('./data/orders.json')) {
-        try {
-            const fileContent = fs.readFileSync('./data/orders.json', 'utf-8').trim();
-            standingOrders = fileContent ? JSON.parse(fileContent) : [];
-        } catch (e: any) {
-            console.error("Error parsing orders.json, defaulting to empty array:", e.message);
-            standingOrders = [];
+    const json = await post({ action: "cln_get_user_open_orders", token });
+    const fetchedOrders = json.response || [];
+
+    const insertOrder = db.prepare('INSERT OR REPLACE INTO Orders (id, pairId, market, type, localPrice) VALUES (@id, @pairId, @market, @type, @localPrice)');
+    db.transaction(() => {
+        db.prepare('DELETE FROM Orders').run();
+        for (const o of fetchedOrders) {
+            insertOrder.run({
+                id: o.id.toString(),
+                pairId: o.pairId,
+                market: o.market,
+                type: o.type,
+                localPrice: o.localPrice
+            });
         }
-    }
-    else {
-        fs.mkdirSync(dirPath, { recursive: true });
-        fs.writeFileSync(filePath, JSON.stringify([]))
-    }
-
-
-    const json = await post({ action: "cln_get_user_open_orders", token })
-
-    fs.writeFileSync('./data/orders.json', JSON.stringify(json.response || []))
+    })();
 
 
 
@@ -296,8 +294,9 @@ const checkStandingOrders = async () => {
         const inv = await getInvAssets();
 
         let idMap: Record<string, number> = {};
-        if (fs.existsSync('./data/id_map.json')) {
-            idMap = JSON.parse(fs.readFileSync('./data/id_map.json', 'utf-8')) || {};
+        const idMapRows = db.prepare('SELECT market_name, asset_id FROM IdMap').all() as { market_name: string, asset_id: number }[];
+        for (const row of idMapRows) {
+            idMap[row.market_name] = row.asset_id;
         }
         const normalIdToMarketName: { [id: string]: string } = {};
         for (const [marketName, normalId] of Object.entries(idMap)) {
