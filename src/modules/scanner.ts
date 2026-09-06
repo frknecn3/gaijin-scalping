@@ -1,6 +1,7 @@
 import db from '../db/database.js';
 import { canBuyItem } from './riskManager.js';
 import { post, getPairStat, calculateLiquidityScore } from '../helpers/helpers.js';
+import { syncOpenOrders } from '../helpers/orderSync.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -10,6 +11,12 @@ const MIN_STREAK = 10; // Minimum profit streak for reliability
 
 export async function scanMarketForOpportunities() {
     console.log("[SCANNER] Starting market scan...");
+
+    // 0. Live Sync open orders from Gaijin API into local SQLite Orders table
+    const openOrders = await syncOpenOrders();
+    const currentlyBuying = new Set(
+        openOrders.filter(o => o.type === 'BUY').map(o => o.market)
+    );
 
     // 1. Get all highly liquid items from the database
     const itemsQuery = db.prepare('SELECT hash_name, data FROM Items').all() as { hash_name: string, data: string }[];
@@ -21,6 +28,11 @@ export async function scanMarketForOpportunities() {
     for (const item of parsedItems) {
         // Skip keys or explicitly ignored items
         if (item.tags?.includes('type:key')) continue;
+
+        // Skip items we are ALREADY buying (open BUY order exists)
+        if (currentlyBuying.has(item.hash_name)) {
+            continue;
+        }
 
         // Basic filter: liquid enough?
         if (item.last2Volume < MIN_VOLUME) continue;
@@ -46,6 +58,10 @@ export async function scanMarketForOpportunities() {
     scoredItems.sort((a, b) => b.score - a.score);
 
     for (const { item, score } of scoredItems) {
+        // Double-check if this item became active during this scan iteration
+        if (currentlyBuying.has(item.hash_name)) {
+            continue;
+        }
 
         try {
             // Check current order book
@@ -83,7 +99,10 @@ export async function scanMarketForOpportunities() {
                 const riskResult = canBuyItem(item.hash_name, targetBuyPrice);
 
                 if (riskResult.allowed) {
-                    await placeBuyOrder(item.hash_name, targetBuyPrice);
+                    const bought = await placeBuyOrder(item.hash_name, targetBuyPrice);
+                    if (bought) {
+                        currentlyBuying.add(item.hash_name);
+                    }
                 } else if (riskResult.reason === 'budget_exceeded') {
                     console.log(`[SCANNER] Budget exceeded for ${item.hash_name}. Attempting reallocation...`);
                     const reallocated = await attemptBudgetReallocation(item.hash_name, targetBuyPrice, score, parsedItems);
@@ -92,7 +111,10 @@ export async function scanMarketForOpportunities() {
                         const retryResult = canBuyItem(item.hash_name, targetBuyPrice);
                         if (retryResult.allowed) {
                             console.log(`[SCANNER] Reallocation successful! Proceeding with buy for ${item.hash_name}.`);
-                            await placeBuyOrder(item.hash_name, targetBuyPrice);
+                            const bought = await placeBuyOrder(item.hash_name, targetBuyPrice);
+                            if (bought) {
+                                currentlyBuying.add(item.hash_name);
+                            }
                         } else {
                             console.log(`[SCANNER] Reallocation was not enough to fit ${item.hash_name} into budget.`);
                         }
@@ -111,13 +133,15 @@ export async function scanMarketForOpportunities() {
     console.log("[SCANNER] Market scan complete.");
 }
 
-async function placeBuyOrder(marketName: string, targetBuyPrice: number) {
+async function placeBuyOrder(marketName: string, targetBuyPrice: number): Promise<boolean> {
     console.log(`[SCANNER] Placing autonomous BUY order for ${marketName} at ${targetBuyPrice.toFixed(2)} GJN`);
+
+    const rawPrice = Math.round(targetBuyPrice * 10000);
 
     // Actually place the order
     const res = await post({
         action: "cln_market_buy",
-        price: Math.round(targetBuyPrice * 10000),
+        price: rawPrice,
         privateMode: true,
         appid: 1067,
         market_name: marketName,
@@ -130,8 +154,21 @@ async function placeBuyOrder(marketName: string, targetBuyPrice: number) {
 
     if (res?.response?.success) {
         console.log(`[SCANNER] Successfully placed BUY order for ${marketName}`);
+        
+        // Immediately record into SQLite Orders table so all subsequent checks and risk manager see it
+        const orderId = res.response.orderId?.toString() || `pending_${Date.now()}`;
+        const pairId = res.response.pairId?.toString() || '';
+        db.prepare('INSERT OR REPLACE INTO Orders (id, pairId, market, type, localPrice) VALUES (?, ?, ?, ?, ?)').run(
+            orderId,
+            pairId,
+            marketName,
+            'BUY',
+            rawPrice
+        );
+        return true;
     } else {
-        console.log(`[SCANNER] Failed to place BUY order for ${marketName}`);
+        console.log(`[SCANNER] Failed to place BUY order for ${marketName}:`, res?.response?.error || 'Unknown error');
+        return false;
     }
 }
 

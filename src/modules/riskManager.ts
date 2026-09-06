@@ -40,21 +40,31 @@ export function canBuyItem(marketName: string, estimatedPrice: number): { allowe
         return { allowed: false, reason: 'circuit_breaker' };
     }
 
-    // 1. Calculate current global exposure
+    // 1. Calculate current global exposure and check for existing orders
     const ordersQuery = db.prepare('SELECT market, type, localPrice FROM Orders').all() as { market: string, type: string, localPrice: number }[];
     
     let totalInvested = 0;
     let itemExposureCount = 0;
+    let hasOpenBuyOrder = false;
 
     for (const order of ordersQuery) {
         if (order.type === 'BUY') {
             totalInvested += (order.localPrice / 10000);
-            if (order.market === marketName) itemExposureCount++;
+            if (order.market === marketName) {
+                itemExposureCount++;
+                hasOpenBuyOrder = true;
+            }
         } else if (order.type === 'SELL') {
             // Money locked in an item waiting to sell
             totalInvested += (order.localPrice / 10000) * 0.85; // rough estimate of locked capital
             if (order.market === marketName) itemExposureCount++;
         }
+    }
+
+    // STRICT CHECK: If an open BUY order already exists for this item, never place another one!
+    if (hasOpenBuyOrder) {
+        console.warn(`[RISK MANAGER] Blocked buy for ${marketName}: Already buying this item (open BUY order exists).`);
+        return { allowed: false, reason: 'already_buying' };
     }
 
     // Add inventory basis to exposure

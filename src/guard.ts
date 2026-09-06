@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path'
 import { marketPost, post, sellerShouldGet, waitForAssetIdByMarketId, getInvAssets } from "./helpers/helpers.js";
 import { getAvailableBases, addBasis } from "./helpers/basisTracker.js";
+import { syncOpenOrders } from "./helpers/orderSync.js";
 import db from "./db/database.js";
 dotenv.config();
 
@@ -35,45 +36,11 @@ function sleep(ms: number) {
 
 const checkStandingOrders = async () => {
 
-    standingOrders = db.prepare('SELECT * FROM Orders').all() as any[];
+    const fetchedOrders = await syncOpenOrders();
 
-    const json = await post({ action: "cln_get_user_open_orders", token });
-    const fetchedOrders = json.response || [];
-
-    const insertOrder = db.prepare('INSERT OR REPLACE INTO Orders (id, pairId, market, type, localPrice) VALUES (@id, @pairId, @market, @type, @localPrice)');
-    db.transaction(() => {
-        db.prepare('DELETE FROM Orders').run();
-        for (const o of fetchedOrders) {
-            insertOrder.run({
-                id: o.id.toString(),
-                pairId: o.pairId,
-                market: o.market,
-                type: o.type,
-                localPrice: o.localPrice
-            });
-        }
-    })();
-
-
-
-    let pendingItems: any[] = [];
+    let pendingItems: any[] = [...fetchedOrders];
     const newSellOrdersCount: Record<string, number> = {};
-
-    if (Array.isArray(json.response)) {
-        pendingItems = [...json.response]
-    }
     const activeOrdersTracker: any[] = [...pendingItems];
-
-    // Check for fulfilled BUY orders
-    for (const oldOrder of standingOrders) {
-        if (oldOrder.type === "BUY") {
-            const stillOpen = pendingItems.find((o: any) => o.id === oldOrder.id);
-            if (!stillOpen && !isCancelled(oldOrder.id)) {
-                console.log(`[BasisTracker] BUY order fulfilled for ${oldOrder.market} at ${oldOrder.localPrice / 10000}`);
-                addBasis(oldOrder.market, oldOrder.localPrice / 10000);
-            }
-        }
-    }
 
     const assignedBasesIndex: Record<string, number> = {};
 
