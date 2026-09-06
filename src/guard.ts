@@ -160,10 +160,17 @@ const checkStandingOrders = async () => {
             const basisIndex = assignedBasesIndex[item.market] || 0;
             assignedBasesIndex[item.market] = basisIndex + 1;
             const availableBases = getAvailableBases(item.market);
-            const trueBasis = availableBases[basisIndex] || highestBid; // Fallback to highestBid if not found
+            const trueBasis = availableBases[basisIndex];
 
-            const unprofitable = !IGNORE_ALL_BASIS && !ignoreBasisItems.includes(item.market) && (lowestSell * 0.85 - trueBasis < MIN_PROFIT);
+            const targetUndercutPrice = trueLowestCompetitorSell - 0.01;
+            const marketSpreadProfit = (targetUndercutPrice * 0.85) - highestBid;
+            const marketSpreadUnprofitable = marketSpreadProfit < MIN_PROFIT;
 
+            const basisUnprofitable = (!IGNORE_ALL_BASIS && !ignoreBasisItems.includes(item.market) && trueBasis !== undefined)
+                ? (targetUndercutPrice * 0.85 - trueBasis < MIN_PROFIT)
+                : false;
+
+            const unprofitable = marketSpreadUnprofitable || basisUnprofitable;
 
             function extractMarketId(marketName: string): number | null {
                 const row = db.prepare('SELECT asset_id FROM IdMap WHERE market_name = ?').get(marketName) as { asset_id: number } | undefined;
@@ -189,7 +196,7 @@ const checkStandingOrders = async () => {
                 console.log("işlemi başlat")
 
                 if (!unnecessarilyLowSell && unprofitable) {
-                    console.log("artık kârsız")
+                    console.log(`[SELL-GUARD] ${item.market} undercut kârsız olduğu için yapılmadı. (Market Spread Kâr: ${marketSpreadProfit.toFixed(2)}, Basis: ${trueBasis ?? 'yok'})`);
                     continue;
                 };
 
@@ -315,13 +322,18 @@ const checkStandingOrders = async () => {
 
                 for (let i = 0; i < idleItems.length; i++) {
                     const unassignedBaseIndex = activeSellOrdersCount + i;
-                    const basis = availableBases[unassignedBaseIndex] || highestBid; // FALLBACK BASIS
+                    const basis = availableBases[unassignedBaseIndex];
                     const targetPrice = lowestSell - 0.01;
-                    const profit = targetPrice * 0.85 - basis;
+                    const marketSpreadProfit = targetPrice * 0.85 - highestBid;
 
-                    if (profit >= MIN_PROFIT || IGNORE_ALL_BASIS || ignoreBasisItems.includes(market)) {
+                    const marketSpreadOk = marketSpreadProfit >= MIN_PROFIT;
+                    const basisOk = (IGNORE_ALL_BASIS || ignoreBasisItems.includes(market) || basis === undefined)
+                        ? true
+                        : (targetPrice * 0.85 - basis >= MIN_PROFIT);
+
+                    if (marketSpreadOk && basisOk) {
                         const assetId = idleItems[i].assetId;
-                        console.log(`[Auto-Lister] Listing ${market} from inventory! Basis: ${basis} (Fallback: ${!availableBases[unassignedBaseIndex]}, Ignored: ${IGNORE_ALL_BASIS || ignoreBasisItems.includes(market)}), Sell Price: ${targetPrice.toFixed(2)}, Profit: ${profit.toFixed(2)}`);
+                        console.log(`[Auto-Lister] Listing ${market} from inventory! Target Price: ${targetPrice.toFixed(2)}, Market Spread Profit: ${marketSpreadProfit.toFixed(2)}, Basis: ${basis ?? 'yok'}`);
                         const price = Math.round(targetPrice * 10000);
                         await post({
                             action: "cln_market_sell",
