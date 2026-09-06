@@ -1,6 +1,9 @@
-﻿FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
+
+# Install native build tools needed for better-sqlite3
+RUN apk add --no-cache python3 make g++
 
 # Copy root package.json and install backend dependencies
 COPY package*.json ./
