@@ -12,7 +12,6 @@ dotenv.config();
 const MIN_PROFIT = 0.01;     // %8 net kâr
 const FEE = 0.3;            // %15 Gaijin komisyonu
 const COOLDOWN = 60_000;     // 60 saniye
-const DRY_RUN = true;        // true = sadece log
 const token = process.env.TOKEN;
 
 let standingOrders: any[] = [];
@@ -347,31 +346,36 @@ const checkStandingOrders = async () => {
     }
 }
 
-checkStandingOrders();
+export function startGuardLoop() {
+    console.log("[GUARD] Guard service started (Standing Orders & Auto-Lister active).");
+    checkStandingOrders();
 
-function scheduleNextRun() {
-    const x = 3
-    const delaySec = Math.floor(Math.random() * (x - 1 + 1)) + 1; // 50–150
-    const delayMs = delaySec * 1000;
+    function scheduleNextRun() {
+        const x = 3;
+        const delaySec = Math.floor(Math.random() * (x - 1 + 1)) + 1; // 1-3s
+        const delayMs = delaySec * 1000;
 
-    console.log(`⏱️ Next run in ${delaySec}s`);
+        setTimeout(async () => {
+            const ACTION_PROBABILITY = 0.5;
 
-    setTimeout(async () => {
-        const ACTION_PROBABILITY = 0.5; // %65 ihtimalle sadece bak
-
-        try {
-            if (Math.random() > ACTION_PROBABILITY) {
-                console.log("👀 sadece izleme turu");
-            } else {
-                await checkStandingOrders();
+            try {
+                if (Math.random() > ACTION_PROBABILITY) {
+                    // Watch-only cycle
+                } else {
+                    await checkStandingOrders();
+                }
+            } catch (err) {
+                console.error("⚠️ checkStandingOrders error:", err);
+            } finally {
+                scheduleNextRun();
             }
-        } catch (err) {
-            console.error("⚠️ checkStandingOrders error:", err);
-        } finally {
-            scheduleNextRun();
-        }
-    }, delayMs);
+        }, delayMs);
+    }
+
+    scheduleNextRun();
 }
 
-
-scheduleNextRun();
+// If run directly (e.g. node dist/guard.js)
+if (process.argv[1]?.includes('guard')) {
+    startGuardLoop();
+}

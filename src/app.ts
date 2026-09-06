@@ -8,6 +8,7 @@ import { scanMarketForOpportunities } from './modules/scanner.js';
 import { performNightlyAudit } from './modules/audit.js';
 import db from './db/database.js';
 import snipeBuyRouter from "./routers/snipeBuy.route.js";
+import { startGuardLoop } from './guard.js';
 dotenv.config();
 // Node 18+ (native fetch)
 
@@ -71,6 +72,7 @@ async function autoRefreshLoop() {
 
 // Start the engine
 autoRefreshLoop();
+startGuardLoop();
 
 app.get('/orders', async (req, res) => {
     const itemsQuery = db.prepare('SELECT data FROM Items').all() as { data: string }[];
