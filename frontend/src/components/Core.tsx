@@ -42,16 +42,31 @@ const Core = (props: Props) => {
 
 
   useEffect(() => {
+    // Initial check on mount: if already running in background, show progress!
+    axios.get('/progress').then(res => {
+      if (res.data.running) {
+        setIsRenewingOrders(true);
+        setProgress(res.data.percent);
+      }
+    }).catch(err => console.log(err));
+  }, []);
+
+  useEffect(() => {
     if (!isRenewingOrders) return
 
     const interval = setInterval(async () => {
-      const res = await axios.get('/progress')
-      console.log("durum res:", res)
-      setProgress(res.data.percent)
+      try {
+        const res = await axios.get('/progress')
+        console.log("durum res:", res)
+        setProgress(res.data.percent)
 
-      if (!res.data.running) {
-        clearInterval(interval)
-        setIsRenewingOrders(false)
+        if (!res.data.running) {
+          clearInterval(interval)
+          setIsRenewingOrders(false)
+          getItems() // Refresh items once the scan finishes!
+        }
+      } catch (err) {
+        console.log(err)
       }
     }, 2000)
 
@@ -70,28 +85,36 @@ const Core = (props: Props) => {
   return (
     <div className=''>
       <div className="pt-20 btn-panel flex flex-col sm:flex-row justify-center items-center gap-8">
-        <button className={`${isRenewingOrders ? "bg-yellow-600" : "bg-green-500"} px-5 py-3 rounded-xl uppercase font-bold hover:${isRenewingOrders ? "bg-yellow-600" : "bg-green-600"} transition border-2 border-transparent hover:border-white`}
+        <button className={`${isRenewingOrders ? "bg-yellow-600 cursor-not-allowed" : "bg-green-500"} px-5 py-3 rounded-xl uppercase font-bold hover:${isRenewingOrders ? "bg-yellow-600" : "bg-green-600"} transition border-2 border-transparent hover:border-white`}
           disabled={isRenewingOrders}
           onClick={async () => {
             setIsRenewingOrders(true);
+            setProgress(0);
             axios
               .get('/renewOrders')
-              .then((res) => getItems())
-              .catch(err => console.log(err))
+              .catch(err => {
+                console.log(err);
+                // Even if 400 (already running in backend), stay in renewing state so user sees progress
+                setIsRenewingOrders(true);
+              });
           }}
         >
           {!isRenewingOrders ? "Yenile" : `%${progress}`}
         </button>
 
-        <button className={`${isRenewingOrders ? "bg-yellow-600" : "bg-red-500"} px-5 py-3 rounded-xl uppercase font-bold hover:${isRenewingOrders ? "bg-yellow-600" : "bg-red-600"} transition border-2 border-transparent hover:border-white`}
+        <button className={`${isRenewingOrders ? "bg-yellow-600 cursor-not-allowed" : "bg-red-500"} px-5 py-3 rounded-xl uppercase font-bold hover:${isRenewingOrders ? "bg-yellow-600" : "bg-red-600"} transition border-2 border-transparent hover:border-white`}
           disabled={isRenewingOrders}
           title="Yavaş, daha kapsamlı yenileme"
           onClick={async () => {
             setIsRenewingOrders(true);
+            setProgress(0);
             axios
               .get('/renewOrders?hard=true')
-              .then((res) => getItems())
-              .catch(err => console.log(err))
+              .catch(err => {
+                console.log(err);
+                // Even if 400 (already running in backend), stay in renewing state so user sees progress
+                setIsRenewingOrders(true);
+              });
           }}
         >
           {!isRenewingOrders ? "Hard Refresh" : `%${progress}`}

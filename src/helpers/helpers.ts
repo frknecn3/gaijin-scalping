@@ -67,7 +67,7 @@ async function getPairStat(marketName:string) {
 
   if(!process.env.TOKEN) return;
 
-  const body = new URLSearchParams({
+  const json = await post({
     action: "cln_get_pair_stat",
     appid: "1067",
     market_name: marketName,
@@ -75,18 +75,7 @@ async function getPairStat(marketName:string) {
     token: process.env.TOKEN
   });
 
-  const res = await fetch("https://market-proxy.gaijin.net/web", {
-    method: "POST",
-    headers: {
-      "content-type": "application/x-www-form-urlencoded"
-    },
-    body
-  });
-
-  const json = await res.json();
-
-  if (!json.response?.success || !json.response["1d"]) {
-    console.log("Veri alınamadı.", json)
+  if (!json?.response?.success || !json?.response["1d"]) {
     return null;
   }
 
