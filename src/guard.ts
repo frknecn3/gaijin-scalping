@@ -165,7 +165,9 @@ const checkStandingOrders = async () => {
             const unprofitable = !IGNORE_ALL_BASIS && !ignoreBasisItems.includes(item.market) && (lowestSell * 0.85 - trueBasis < MIN_PROFIT);
 
 
-            function extractMarketId(marketName: string) {
+            function extractMarketId(marketName: string): number | null {
+                const row = db.prepare('SELECT asset_id FROM IdMap WHERE market_name = ?').get(marketName) as { asset_id: number } | undefined;
+                if (row?.asset_id) return row.asset_id;
                 const match = marketName.match(/(?:^id|^ugcitem_)(\d+)/);
                 return match ? Number(match[1]) : null;
             }
@@ -230,7 +232,7 @@ const checkStandingOrders = async () => {
 
                 const res = await post({
                     action: "cln_market_sell",
-                    token: process.env.SELLTOKEN,
+                    token: process.env.SELLTOKEN || token,
                     transactid: Math.round(Math.random() * 100000),
                     reqstamp: Date.now(),
                     appid: 1067,
