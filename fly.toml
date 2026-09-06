@@ -1,4 +1,4 @@
-﻿app = "gaijin-scalping-bot"
+app = "gaijin-scalping"
 primary_region = "ams"
 
 [build]
