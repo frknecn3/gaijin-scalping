@@ -4,6 +4,8 @@ import { post } from './helpers/helpers.js';
 import express, { json } from 'express';
 import cors from 'cors';
 import { startRenewOrders } from './helpers/renewOrders.js';
+import { scanMarketForOpportunities } from './modules/scanner.js';
+import { performNightlyAudit } from './modules/audit.js';
 import db from './db/database.js';
 import snipeBuyRouter from "./routers/snipeBuy.route.js";
 dotenv.config();
@@ -45,12 +47,22 @@ async function autoRefreshLoop() {
     while (true) {
         if (!jobState.running) {
             scanCount++;
+            
+            // 1. Audit check every 100 scans
+            if (scanCount % 100 === 0) {
+                await performNightlyAudit();
+            }
+
             const isHardScan = (scanCount % 10 === 0);
             
-            console.log(`[AUTO-REFRESH] Triggering new scan (Scan #${scanCount}, Hard Scan: ${isHardScan})...`);
+            console.log(`[AUTO-REFRESH] Triggering new data fetch (Scan #${scanCount}, Hard Scan: ${isHardScan})...`);
             
+            // 2. Fetch market data
             await startRenewOrders(jobState, isHardScan);
             
+            // 3. Scan the new data for opportunities
+            await scanMarketForOpportunities();
+
             console.log(`[AUTO-REFRESH] Scan #${scanCount} complete. Waiting 5 seconds before next cycle...`);
         }
         await new Promise(res => setTimeout(res, 5000));
@@ -88,12 +100,16 @@ app.get('/orders', async (req, res) => {
         if (o.type === "SELL") totalSell += (o.localPrice / 10000) * 0.85;
     }
 
+    const totalProfitQuery = db.prepare('SELECT SUM(profit) as total FROM Profits').get() as { total: number };
+    const totalProfit = totalProfitQuery.total || 0;
+
     res.status(200).send({
         success: true,
         data: items,
         totals: {
             buy: totalBuy,
-            sell: totalSell
+            sell: totalSell,
+            profit: totalProfit
         },
         message: "Ürünler gönderildi."
     })
@@ -124,8 +140,8 @@ app.get('/item/:id', async (req, res) => {
             success: true,
             data: {
                 id: id,
-                BUY: market.response.BUY[0][0],
-                SELL: market.response.SELL[0][0]
+                BUY: market.response?.BUY?.[0]?.[0] ?? 0,
+                SELL: market.response?.SELL?.[0]?.[0] ?? 0
             },
             message: "Ürünler gönderildi."
         })
@@ -142,6 +158,21 @@ app.get('/item/:id', async (req, res) => {
 
 app.use(snipeBuyRouter);
 
-app.listen(4000, () => {
-    console.log('Sunucu 4000 portunu dinlemeye başladı.')
+// Serve static frontend files
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const frontendDistPath = path.join(__dirname, '../../frontend/dist');
+
+app.use(express.static(frontendDistPath));
+
+app.get('*', (req, res) => {
+    res.sendFile(path.join(frontendDistPath, 'index.html'));
+});
+
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, () => {
+    console.log(`Sunucu ${PORT} portunu dinlemeye başladı.`)
 })

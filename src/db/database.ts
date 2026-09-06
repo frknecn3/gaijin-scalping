@@ -42,6 +42,20 @@ db.exec(`
     market_name TEXT PRIMARY KEY,
     streak INTEGER DEFAULT 0
   );
+
+  CREATE TABLE IF NOT EXISTS Profits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    market TEXT,
+    sellPrice REAL,
+    basis REAL,
+    profit REAL,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS CancelledOrders (
+    id INTEGER PRIMARY KEY,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 export default db;

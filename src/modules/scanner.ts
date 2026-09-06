@@ -4,30 +4,49 @@ import { post, getPairStat, calculateLiquidityScore } from '../helpers/helpers.j
 import dotenv from 'dotenv';
 dotenv.config();
 
-const MIN_PROFIT = 0.05; // 5% minimum profit
-const MIN_VOLUME = 5; // Minimum 5 sales in 24 hours
+const MIN_PROFIT = 0.10; // 10% minimum profit to start engaging
+const MIN_VOLUME = 50; // Minimum 50 sales in 48 hours
+const MIN_STREAK = 10; // Minimum profit streak for reliability
 
 export async function scanMarketForOpportunities() {
     console.log("[SCANNER] Starting market scan...");
-    
+
     // 1. Get all highly liquid items from the database
     const itemsQuery = db.prepare('SELECT hash_name, data FROM Items').all() as { hash_name: string, data: string }[];
-    
-    for (const row of itemsQuery) {
-        const item = JSON.parse(row.data);
-        
+
+    const parsedItems = itemsQuery.map(row => JSON.parse(row.data));
+
+    // 2. Score and filter items based on ROI and Volume
+    const scoredItems = [];
+    for (const item of parsedItems) {
         // Skip keys or explicitly ignored items
         if (item.tags?.includes('type:key')) continue;
-        
+
         // Basic filter: liquid enough?
         if (item.last2Volume < MIN_VOLUME) continue;
 
         // STURDINESS GUARD: The "40 Rounds" rule.
-        // The item must have been consistently profitable for at least 40 rounds (approx 6-7 minutes).
-        if (!item.profit_streak || item.profit_streak < 40) {
+        if (!item.profit_streak || item.profit_streak < MIN_STREAK) {
             continue;
         }
-        
+
+        const cost = item.buy_price || 1; // avoid division by zero
+        const profit = item.profit || 0;
+
+        // ROI: Profit per invested GJN
+        const roi = profit / cost;
+
+        // Score: Prioritize highest ROI, with a boost for high volume
+        const score = roi * Math.log10(item.last2Volume + 1);
+
+        scoredItems.push({ item, score });
+    }
+
+    // 3. Sort by score descending (best opportunities first)
+    scoredItems.sort((a, b) => b.score - a.score);
+
+    for (const { item, score } of scoredItems) {
+
         try {
             // Check current order book
             const marketBooks = await post({
@@ -45,7 +64,7 @@ export async function scanMarketForOpportunities() {
             if (!lowestSell || !highestBuy) continue;
 
             const estimatedProfit = (lowestSell * 0.85) - (highestBuy + 0.01);
-            
+
             if (estimatedProfit >= MIN_PROFIT) {
                 const targetBuyPrice = highestBuy + 0.01;
 
@@ -59,42 +78,115 @@ export async function scanMarketForOpportunities() {
 
                 // Potential opportunity found!
                 console.log(`[SCANNER] Opportunity found for ${item.hash_name}! Spread: ${highestBuy} -> ${lowestSell}. Estimated Profit: ${estimatedProfit.toFixed(2)} GJN`);
-                
+
                 // Let Risk Manager approve the trade
-                
-                if (canBuyItem(item.hash_name, targetBuyPrice)) {
-                    console.log(`[SCANNER] Placing autonomous BUY order for ${item.hash_name} at ${targetBuyPrice.toFixed(2)} GJN`);
-                    
-                    // Actually place the order
-                    /*
-                    const res = await post({
-                        action: "cln_market_buy",
-                        price: Math.round(targetBuyPrice * 10000),
-                        privateMode: true,
-                        appid: 1067,
-                        market_name: item.hash_name,
-                        currencyid: "gjn",
-                        amount: 1,
-                        transactid: Math.round(Math.random() * 100000),
-                        reqstamp: Date.now(),
-                        token: process.env.TOKEN
-                    });
-                    
-                    if (res?.response?.success) {
-                        console.log(`[SCANNER] Successfully placed BUY order for ${item.hash_name}`);
+                const riskResult = canBuyItem(item.hash_name, targetBuyPrice);
+
+                if (riskResult.allowed) {
+                    await placeBuyOrder(item.hash_name, targetBuyPrice);
+                } else if (riskResult.reason === 'budget_exceeded') {
+                    console.log(`[SCANNER] Budget exceeded for ${item.hash_name}. Attempting reallocation...`);
+                    const reallocated = await attemptBudgetReallocation(item.hash_name, targetBuyPrice, score, parsedItems);
+                    if (reallocated) {
+                        // After successfully cancelling an inferior order, retry buying
+                        const retryResult = canBuyItem(item.hash_name, targetBuyPrice);
+                        if (retryResult.allowed) {
+                            console.log(`[SCANNER] Reallocation successful! Proceeding with buy for ${item.hash_name}.`);
+                            await placeBuyOrder(item.hash_name, targetBuyPrice);
+                        } else {
+                            console.log(`[SCANNER] Reallocation was not enough to fit ${item.hash_name} into budget.`);
+                        }
                     }
-                    */
-                   console.log(`[SCANNER] (DRY RUN) Would have bought ${item.hash_name}`);
                 }
             }
-            
+
             // Sleep slightly to prevent rate limits during the scan
             await new Promise(res => setTimeout(res, 500));
-            
+
         } catch (e) {
             console.error(`[SCANNER] Error scanning ${item.hash_name}:`, e);
         }
     }
-    
+
     console.log("[SCANNER] Market scan complete.");
+}
+
+async function placeBuyOrder(marketName: string, targetBuyPrice: number) {
+    console.log(`[SCANNER] Placing autonomous BUY order for ${marketName} at ${targetBuyPrice.toFixed(2)} GJN`);
+
+    // Actually place the order
+    const res = await post({
+        action: "cln_market_buy",
+        price: Math.round(targetBuyPrice * 10000),
+        privateMode: true,
+        appid: 1067,
+        market_name: marketName,
+        currencyid: "gjn",
+        amount: 1,
+        transactid: Math.round(Math.random() * 100000),
+        reqstamp: Date.now(),
+        token: process.env.TOKEN
+    });
+
+    if (res?.response?.success) {
+        console.log(`[SCANNER] Successfully placed BUY order for ${marketName}`);
+    } else {
+        console.log(`[SCANNER] Failed to place BUY order for ${marketName}`);
+    }
+}
+
+async function attemptBudgetReallocation(newMarketName: string, newPrice: number, newScore: number, parsedItems: any[]): Promise<boolean> {
+    const activeOrders = db.prepare("SELECT id, pairId, market, type, localPrice FROM Orders WHERE type = 'BUY'").all() as { id: string, pairId: string, market: string, type: string, localPrice: number }[];
+
+    if (activeOrders.length === 0) return false;
+
+    // Map active orders to their ROI scores
+    const activeOrdersScored = activeOrders.map(order => {
+        const itemData = parsedItems.find(i => i.hash_name === order.market);
+        let score = 0;
+        if (itemData) {
+            const cost = itemData.buy_price || 1;
+            const profit = itemData.profit || 0;
+            const roi = profit / cost;
+            score = roi * Math.log10(itemData.last2Volume + 1);
+        }
+        return { ...order, score };
+    });
+
+    // Sort by score ascending (worst opportunities first)
+    activeOrdersScored.sort((a, b) => a.score - b.score);
+
+    const worstOrder = activeOrdersScored[0];
+
+    // If the worst active order is still better or equal to the new one, don't reallocate
+    if (worstOrder.score >= newScore) {
+        console.log(`[SCANNER] Reallocation denied: The worst active order (${worstOrder.market} with score ${worstOrder.score.toFixed(2)}) is still better than the new opportunity (${newScore.toFixed(2)}).`);
+        return false;
+    }
+
+    // We found an inferior order to cancel!
+    console.log(`[SCANNER] REALLOCATION TRIGGERED: Cancelling ${worstOrder.market} (Score: ${worstOrder.score.toFixed(2)}) to afford ${newMarketName} (Score: ${newScore.toFixed(2)})`);
+
+    // Cancel the order via API
+    const res = await post({
+        action: "cancel_order",
+        pairId: worstOrder.pairId,
+        orderId: worstOrder.id,
+        token: process.env.TOKEN
+    });
+
+    if (res?.response?.success) {
+        console.log(`[SCANNER] Successfully cancelled ${worstOrder.market}.`);
+
+        // Log to CancelledOrders so guard.ts ignores it
+        db.prepare('INSERT INTO CancelledOrders (id) VALUES (?)').run(worstOrder.id);
+
+        // Remove it from the local Orders table immediately so riskManager sees the freed budget
+        db.prepare('DELETE FROM Orders WHERE id = ?').run(worstOrder.id);
+
+        return true;
+    } else {
+        console.log(`[SCANNER] Failed to cancel ${worstOrder.market} for reallocation.`);
+        return false;
+    }
 }

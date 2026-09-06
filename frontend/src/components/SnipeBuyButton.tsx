@@ -21,7 +21,7 @@ const SnipeBuyButton = ({ item, dryRun = false, minProfit = 0.05 }: Props) => {
     setBusy(true);
     setResult(null);
     try {
-      const res = await axios.post("http://localhost:4000/snipeBuy", {
+      const res = await axios.post("/snipeBuy", {
         market_name: item.hash_name,
         minProfit,
         dryRun,

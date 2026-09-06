@@ -18,7 +18,14 @@ let standingOrders: any[] = [];
 const ignore: string[] = [];
 const ignoreBasisItems: string[] = []; // Items in this list will be sold regardless of profitability
 const IGNORE_ALL_BASIS = true; // Set to true to bypass basis checks for all items (liquidate mode)
-const cancelledOrders = new Set<number>();
+function isCancelled(orderId: number): boolean {
+    const row = db.prepare('SELECT id FROM CancelledOrders WHERE id = ?').get(orderId);
+    return !!row;
+}
+
+function recordCancelled(orderId: number) {
+    db.prepare('INSERT OR IGNORE INTO CancelledOrders (id) VALUES (?)').run(orderId);
+}
 
 function sleep(ms: number) {
     return new Promise(res => setTimeout(res, ms));
@@ -61,7 +68,7 @@ const checkStandingOrders = async () => {
     for (const oldOrder of standingOrders) {
         if (oldOrder.type === "BUY") {
             const stillOpen = pendingItems.find((o: any) => o.id === oldOrder.id);
-            if (!stillOpen && !cancelledOrders.has(oldOrder.id)) {
+            if (!stillOpen && !isCancelled(oldOrder.id)) {
                 console.log(`[BasisTracker] BUY order fulfilled for ${oldOrder.market} at ${oldOrder.localPrice / 10000}`);
                 addBasis(oldOrder.market, oldOrder.localPrice / 10000);
             }
@@ -132,7 +139,7 @@ const checkStandingOrders = async () => {
 
             if (userBid < highestBid && (lowestSell * 0.85 - highestBid) > MIN_PROFIT || unnecessarilyHighBuy) {
 
-                cancelledOrders.add(item.id);
+                recordCancelled(item.id);
                 const idx = activeOrdersTracker.findIndex(o => o.id === item.id);
                 if (idx !== -1) activeOrdersTracker.splice(idx, 1);
 
@@ -218,7 +225,7 @@ const checkStandingOrders = async () => {
                     continue;
                 };
 
-                cancelledOrders.add(item.id);
+                recordCancelled(item.id);
                 const idx = activeOrdersTracker.findIndex(o => o.id === item.id);
                 if (idx !== -1) activeOrdersTracker.splice(idx, 1);
 
@@ -314,7 +321,7 @@ const checkStandingOrders = async () => {
 
         const activeSellOrdersByMarket: Record<string, number> = {};
         for (const item of pendingItems) {
-            if (item.type === "SELL" && !cancelledOrders.has(item.id)) {
+            if (item.type === "SELL" && !isCancelled(item.id)) {
                 activeSellOrdersByMarket[item.market] = (activeSellOrdersByMarket[item.market] || 0) + 1;
             }
         }

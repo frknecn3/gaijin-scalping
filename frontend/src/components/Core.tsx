@@ -16,10 +16,10 @@ const Core = (props: Props) => {
   const [isRenewingOrders, setIsRenewingOrders] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   const [category, setCategory] = useState('')
-  const [totals, setTotals] = useState<{buy: number, sell: number}>({buy: 0, sell: 0});
+  const [totals, setTotals] = useState<{buy: number, sell: number, profit?: number}>({buy: 0, sell: 0, profit: 0});
 
   const getItems = async (): Promise<void> => {
-    axios.get(`http://localhost:4000/orders?category=${category}`)
+    axios.get(`/orders?category=${category}`)
       .then(res => {
         console.log(res);
         setTotals(res.data.totals || {buy: 0, sell: 0});
@@ -45,7 +45,7 @@ const Core = (props: Props) => {
     if (!isRenewingOrders) return
 
     const interval = setInterval(async () => {
-      const res = await axios.get('http://localhost:4000/progress')
+      const res = await axios.get('/progress')
       console.log("durum res:", res)
       setProgress(res.data.percent)
 
@@ -75,7 +75,7 @@ const Core = (props: Props) => {
           onClick={async () => {
             setIsRenewingOrders(true);
             axios
-              .get('http://localhost:4000/renewOrders')
+              .get('/renewOrders')
               .then((res) => getItems())
               .catch(err => console.log(err))
           }}
@@ -89,7 +89,7 @@ const Core = (props: Props) => {
           onClick={async () => {
             setIsRenewingOrders(true);
             axios
-              .get('http://localhost:4000/renewOrders?hard=true')
+              .get('/renewOrders?hard=true')
               .then((res) => getItems())
               .catch(err => console.log(err))
           }}
@@ -127,6 +127,10 @@ const Core = (props: Props) => {
             <span className="text-blue-400 font-semibold" title="Total active BUY orders">BUY: {totals.buy.toFixed(2)} GJN</span>
             <span className="text-red-400 font-semibold" title="Total active SELL orders (x0.85)">SELL: {totals.sell.toFixed(2)} GJN</span>
             <span className="text-white font-bold ml-2">TOTAL: {(totals.buy + totals.sell).toFixed(2)} GJN</span>
+          </div>
+          <div className="text-xs text-gray-400 font-bold uppercase mt-2 mb-1">Realized Profit</div>
+          <div className="flex gap-4">
+            <span className="text-green-400 font-bold" title="Total accumulated profit from all fulfilled sales">+{totals.profit?.toFixed(2) || "0.00"} GJN</span>
           </div>
         </div>
 

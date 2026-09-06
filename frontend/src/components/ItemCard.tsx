@@ -15,7 +15,7 @@ const ItemCard = ({ item }: Props) => {
     const [updatedVal, setUpdatedVal] = useState<{ buy: number, sell: number } | null>(null);
 
     const handleRefresh = async () => {
-        const res = await axios.get(`http://localhost:4000/item/${item.hash_name}`);
+        const res = await axios.get(`/item/${item.hash_name}`);
 
         console.log(res)
 
