@@ -45,9 +45,14 @@ const Core = (props: Props) => {
 
   useEffect(() => {
     console.log("cat:", category);
+    getItems();
 
-    getItems()
+    // Auto-sync totals & profits every 10 seconds so profits appear automatically
+    const pollInterval = setInterval(() => {
+      getItems();
+    }, 10000);
 
+    return () => clearInterval(pollInterval);
   }, [category])
 
 

@@ -46,6 +46,18 @@ app.post('/settings', (req, res) => {
     }
 });
 
+app.get('/api/profits', async (req, res) => {
+    try {
+        const { syncUserHistory } = await import('./helpers/orderSync.js');
+        await syncUserHistory();
+        const rows = db.prepare('SELECT * FROM Profits ORDER BY id DESC LIMIT 50').all();
+        const total = db.prepare('SELECT SUM(profit) as total FROM Profits').get() as { total: number };
+        res.status(200).json({ success: true, total: total.total || 0, profits: rows });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e?.message });
+    }
+});
+
 app.get('/renewOrders', (req, res): void => {
     if (jobState.running) {
         res.status(400).send({ message: 'Already running' })

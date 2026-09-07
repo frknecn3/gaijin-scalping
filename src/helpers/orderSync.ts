@@ -150,16 +150,25 @@ export async function syncOpenOrders(): Promise<GaijinOpenOrder[]> {
                 }
             }
 
+            // Also count items currently listed as open SELL orders!
+            // When an item is listed for sale on Gaijin Market, it temporarily leaves the user inventory.
+            const openSellCounts: Record<string, number> = {};
+            for (const o of fetchedOrders) {
+                if (o.type === "SELL") {
+                    openSellCounts[o.market] = (openSellCounts[o.market] || 0) + 1;
+                }
+            }
+
             const allBasis = db.prepare('SELECT market_name, basis_prices FROM Basis').all() as { market_name: string, basis_prices: string }[];
             for (const b of allBasis) {
-                const actualCount = actualInvCounts[b.market_name] || 0;
+                const totalOwned = (actualInvCounts[b.market_name] || 0) + (openSellCounts[b.market_name] || 0);
                 let prices: number[] = JSON.parse(b.basis_prices);
-                if (actualCount === 0) {
-                    // Item is no longer in inventory! Remove ghost basis
+                if (totalOwned === 0) {
+                    // Item is no longer in inventory or on sale! Remove ghost basis
                     db.prepare('DELETE FROM Basis WHERE market_name = ?').run(b.market_name);
-                } else if (prices.length > actualCount) {
-                    // Prune excess ghost bases down to the actual quantity owned
-                    prices = prices.slice(0, actualCount);
+                } else if (prices.length > totalOwned) {
+                    // Prune excess ghost bases down to the actual quantity owned + listed
+                    prices = prices.slice(0, totalOwned);
                     db.prepare('UPDATE Basis SET basis_prices = ? WHERE market_name = ?').run(JSON.stringify(prices), b.market_name);
                 }
             }
