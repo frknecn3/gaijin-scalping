@@ -2,15 +2,16 @@ import db from '../db/database.js';
 import { canBuyItem } from './riskManager.js';
 import { post, getPairStat, calculateLiquidityScore } from '../helpers/helpers.js';
 import { syncOpenOrders } from '../helpers/orderSync.js';
+import { getBotSettings } from '../helpers/settingsManager.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const MIN_PROFIT = 0.10; // 10% minimum profit to start engaging
-const MIN_VOLUME = 50; // Minimum 50 sales in 48 hours
-const MIN_STREAK = 10; // Minimum profit streak for reliability
-
 export async function scanMarketForOpportunities() {
     console.log("[SCANNER] Starting market scan...");
+    const settings = getBotSettings();
+    const MIN_PROFIT = settings.scannerMinProfit;
+    const MIN_VOLUME = settings.minVolume;
+    const MIN_STREAK = settings.minStreak;
 
     // 0. Live Sync open orders from Gaijin API into local SQLite Orders table
     const openOrders = await syncOpenOrders();
@@ -154,7 +155,7 @@ async function placeBuyOrder(marketName: string, targetBuyPrice: number): Promis
 
     if (res?.response?.success) {
         console.log(`[SCANNER] Successfully placed BUY order for ${marketName}`);
-        
+
         // Immediately record into SQLite Orders table so all subsequent checks and risk manager see it
         const orderId = res.response.orderId?.toString() || `pending_${Date.now()}`;
         const pairId = res.response.pairId?.toString() || '';

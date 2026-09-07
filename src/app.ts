@@ -9,6 +9,7 @@ import { performNightlyAudit } from './modules/audit.js';
 import db from './db/database.js';
 import snipeBuyRouter from "./routers/snipeBuy.route.js";
 import { startGuardLoop } from './guard.js';
+import { getBotSettings, updateBotSettings } from './helpers/settingsManager.js';
 dotenv.config();
 // Node 18+ (native fetch)
 
@@ -30,6 +31,19 @@ app.get('/progress', async (req, res) => {
     res.status(200).send(jobState)
 })
 
+app.get('/settings', (req, res) => {
+    const settings = getBotSettings();
+    res.status(200).json({ success: true, settings });
+});
+
+app.post('/settings', (req, res) => {
+    try {
+        const updated = updateBotSettings(req.body);
+        res.status(200).json({ success: true, settings: updated });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e?.message });
+    }
+});
 
 app.get('/renewOrders', (req, res): void => {
     if (jobState.running) {

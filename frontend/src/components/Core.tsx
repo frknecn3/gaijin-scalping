@@ -2,6 +2,7 @@ import axios from 'axios';
 import React, { useEffect, useMemo, useState } from 'react'
 import type { HashType } from '../utils/types';
 import ItemCard from './ItemCard';
+import SettingsModal from './SettingsModal';
 
 type Props = {}
 
@@ -17,6 +18,7 @@ const Core = (props: Props) => {
   const [progress, setProgress] = useState<number>(0);
   const [category, setCategory] = useState('')
   const [totals, setTotals] = useState<{buy: number, sell: number, profit?: number}>({buy: 0, sell: 0, profit: 0});
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
 
   const getItems = async (): Promise<void> => {
     axios.get(`/orders?category=${category}`)
@@ -120,6 +122,14 @@ const Core = (props: Props) => {
           {!isRenewingOrders ? "Hard Refresh" : `%${progress}`}
         </button>
 
+        <button
+          onClick={() => setIsSettingsOpen(true)}
+          className="bg-[#242b38] hover:bg-[#2f384a] text-cyan-400 hover:text-cyan-300 border border-cyan-500/40 hover:border-cyan-400 px-5 py-3 rounded-xl uppercase font-bold transition flex items-center gap-2 shadow-lg shadow-cyan-950/30 active:scale-95"
+          title="Guard kâr marjı, confirmation streak ve bot ayarlarını düzenle"
+        >
+          <span>⚙️</span> Bot Ayarları
+        </button>
+
         {/* min hacim */}
         <div className="flex flex-col">
           <label htmlFor="">Min Volume</label>
@@ -179,6 +189,11 @@ const Core = (props: Props) => {
           }
         </div>
       </div>
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+      />
     </div>
   )
 }

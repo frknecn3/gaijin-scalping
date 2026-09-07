@@ -1,5 +1,6 @@
 import { calculateLiquidityScore, getPairStat } from "./helpers.js";
 import db from "../db/database.js";
+import { getBotSettings } from "./settingsManager.js";
 import fs from 'fs';
 
 
@@ -149,7 +150,8 @@ export async function startRenewOrders(jobState: JobState, isHardRefresh: boolea
         const getStreak = db.prepare('SELECT streak FROM ItemStreaks WHERE market_name = ?');
         const updateStreak = db.prepare('INSERT OR REPLACE INTO ItemStreaks (market_name, streak) VALUES (@market_name, @streak)');
 
-        const MIN_PROFIT = 0.10; // GJN
+        const settings = getBotSettings();
+        const MIN_PROFIT = settings.scannerMinProfit;
 
         db.transaction(() => {
             // First clear all existing items so we don't keep stale ones

@@ -5,11 +5,11 @@ import { marketPost, post, sellerShouldGet, waitForAssetIdByMarketId, getInvAsse
 import { getAvailableBases, addBasis } from "./helpers/basisTracker.js";
 import { syncOpenOrders } from "./helpers/orderSync.js";
 import db from "./db/database.js";
+import { getBotSettings } from "./helpers/settingsManager.js";
 dotenv.config();
 
 // ================= CONFIG =================
 
-const MIN_PROFIT = 0.01;     // %8 net kâr
 const FEE = 0.3;            // %15 Gaijin komisyonu
 const COOLDOWN = 60_000;     // 60 saniye
 const token = process.env.TOKEN;
@@ -17,7 +17,6 @@ const token = process.env.TOKEN;
 let standingOrders: any[] = [];
 const ignore: string[] = [];
 const ignoreBasisItems: string[] = []; // Items in this list will be sold regardless of profitability
-const IGNORE_ALL_BASIS = true; // Set to true to bypass basis checks for all items (liquidate mode)
 function isCancelled(orderId: number): boolean {
     const row = db.prepare('SELECT id FROM CancelledOrders WHERE id = ?').get(orderId);
     return !!row;
@@ -34,6 +33,9 @@ function sleep(ms: number) {
 
 
 const checkStandingOrders = async () => {
+    const settings = getBotSettings();
+    const MIN_PROFIT = settings.guardMinProfit;
+    const IGNORE_ALL_BASIS = settings.ignoreAllBasis;
 
     const fetchedOrders = await syncOpenOrders();
 

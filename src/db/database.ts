@@ -56,6 +56,11 @@ db.exec(`
     id INTEGER PRIMARY KEY,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS Settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  );
 `);
 
 export default db;

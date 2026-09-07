@@ -1,7 +1,7 @@
 import db from '../db/database.js';
 import { getWalletBalance } from '../helpers/helpers.js';
+import { getBotSettings } from '../helpers/settingsManager.js';
 
-const MAX_ITEM_EXPOSURE = 1; // Max 1 copy of the same item at any time
 let CIRCUIT_BREAKER_ACTIVE = false;
 let CONSECUTIVE_LOSSES = 0;
 
@@ -69,6 +69,9 @@ export async function canBuyItem(marketName: string, estimatedPrice: number): Pr
         const prices: number[] = JSON.parse(basisQuery.basis_prices);
         itemExposureCount += prices.length;
     }
+
+    const settings = getBotSettings();
+    const MAX_ITEM_EXPOSURE = settings.maxItemExposure;
 
     if (itemExposureCount >= MAX_ITEM_EXPOSURE) {
         console.warn(`[RISK MANAGER] Blocked buy for ${marketName}: Max exposure limit reached (${itemExposureCount}/${MAX_ITEM_EXPOSURE})`);
