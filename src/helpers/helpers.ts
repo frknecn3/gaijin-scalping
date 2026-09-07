@@ -152,7 +152,30 @@ function extractMarketId(marketName:string) {
 }
 
 
+async function getWalletBalance(): Promise<number | null> {
+  const token = process.env.TOKEN;
+  if (!token) return null;
+
+  try {
+    const res = await fetch("https://wallet.gaijin.net/GetBalance?", {
+      headers: {
+        "accept": "application/json, text/plain, */*",
+        "authorization": "BEARER " + token,
+        "Referer": "https://trade.gaijin.net/"
+      }
+    });
+    const json = await res.json();
+    if (json.status === "OK" && typeof json.balance === "number") {
+      return json.balance / 10000; // 76500 -> 7.65 GJN
+    }
+    return null;
+  } catch (err) {
+    console.error("[WALLET] Error fetching balance:", err);
+    return null;
+  }
+}
+
 const findItemOrder = (id:number, array:any[]) => {
   return array.find((i) => extractMarketId(i.market) == id)
 }
-export { getPairStat, calculateLiquidityScore, waitForAssetIdByMarketId, post, marketPost, sellerShouldGet, findItemOrder }
+export { getPairStat, calculateLiquidityScore, waitForAssetIdByMarketId, post, marketPost, sellerShouldGet, findItemOrder, getWalletBalance }

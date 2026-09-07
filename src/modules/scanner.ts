@@ -96,7 +96,7 @@ export async function scanMarketForOpportunities() {
                 console.log(`[SCANNER] Opportunity found for ${item.hash_name}! Spread: ${highestBuy} -> ${lowestSell}. Estimated Profit: ${estimatedProfit.toFixed(2)} GJN`);
 
                 // Let Risk Manager approve the trade
-                const riskResult = canBuyItem(item.hash_name, targetBuyPrice);
+                const riskResult = await canBuyItem(item.hash_name, targetBuyPrice);
 
                 if (riskResult.allowed) {
                     const bought = await placeBuyOrder(item.hash_name, targetBuyPrice);
@@ -104,11 +104,11 @@ export async function scanMarketForOpportunities() {
                         currentlyBuying.add(item.hash_name);
                     }
                 } else if (riskResult.reason === 'budget_exceeded') {
-                    console.log(`[SCANNER] Budget exceeded for ${item.hash_name}. Attempting reallocation...`);
+                    console.log(`[SCANNER] Insufficient wallet balance for ${item.hash_name}. Attempting reallocation...`);
                     const reallocated = await attemptBudgetReallocation(item.hash_name, targetBuyPrice, score, parsedItems);
                     if (reallocated) {
                         // After successfully cancelling an inferior order, retry buying
-                        const retryResult = canBuyItem(item.hash_name, targetBuyPrice);
+                        const retryResult = await canBuyItem(item.hash_name, targetBuyPrice);
                         if (retryResult.allowed) {
                             console.log(`[SCANNER] Reallocation successful! Proceeding with buy for ${item.hash_name}.`);
                             const bought = await placeBuyOrder(item.hash_name, targetBuyPrice);

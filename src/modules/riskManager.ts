@@ -1,6 +1,6 @@
 import db from '../db/database.js';
+import { getWalletBalance } from '../helpers/helpers.js';
 
-const GLOBAL_BUDGET = 50.0; // Max 50 GJN invested at any time
 const MAX_ITEM_EXPOSURE = 1; // Max 1 copy of the same item at any time
 let CIRCUIT_BREAKER_ACTIVE = false;
 let CONSECUTIVE_LOSSES = 0;
@@ -34,29 +34,25 @@ export function recordTradeResult(profit: number) {
     }
 }
 
-export function canBuyItem(marketName: string, estimatedPrice: number): { allowed: boolean, reason?: string, currentInvested?: number } {
+export async function canBuyItem(marketName: string, estimatedPrice: number): Promise<{ allowed: boolean, reason?: string, availableBalance?: number }> {
     if (CIRCUIT_BREAKER_ACTIVE) {
         console.warn(`[RISK MANAGER] Blocked buy for ${marketName}: Circuit breaker is active.`);
         return { allowed: false, reason: 'circuit_breaker' };
     }
 
-    // 1. Calculate current global exposure and check for existing orders
-    const ordersQuery = db.prepare('SELECT market, type, localPrice FROM Orders').all() as { market: string, type: string, localPrice: number }[];
+    // 1. Exposure and Open Order check
+    const ordersQuery = db.prepare('SELECT market, type FROM Orders').all() as { market: string, type: string }[];
     
-    let totalInvested = 0;
     let itemExposureCount = 0;
     let hasOpenBuyOrder = false;
 
     for (const order of ordersQuery) {
         if (order.type === 'BUY') {
-            totalInvested += (order.localPrice / 10000);
             if (order.market === marketName) {
                 itemExposureCount++;
                 hasOpenBuyOrder = true;
             }
         } else if (order.type === 'SELL') {
-            // Money locked in an item waiting to sell
-            totalInvested += (order.localPrice / 10000) * 0.85; // rough estimate of locked capital
             if (order.market === marketName) itemExposureCount++;
         }
     }
@@ -68,34 +64,27 @@ export function canBuyItem(marketName: string, estimatedPrice: number): { allowe
     }
 
     // Add inventory basis to exposure
-    const basisQuery = db.prepare('SELECT market_name, basis_prices FROM Basis').all() as { market_name: string, basis_prices: string }[];
-    for (const row of basisQuery) {
-        const prices: number[] = JSON.parse(row.basis_prices);
-        for (const p of prices) {
-            totalInvested += p;
-            if (row.market_name === marketName) {
-                itemExposureCount++;
-            }
-        }
-    }
-
-    // 2. Add leeway limit (Reserve 20% of global budget for outbidding leeway)
-    const MAX_ALLOWED_INVESTMENT = GLOBAL_BUDGET * 0.80;
-    if (totalInvested + estimatedPrice > MAX_ALLOWED_INVESTMENT) {
-        console.warn(`[RISK MANAGER] Blocked buy for ${marketName}: Leeway budget exceeded (Invested + New: ${(totalInvested + estimatedPrice).toFixed(2)}, Max Allowed: ${MAX_ALLOWED_INVESTMENT.toFixed(2)})`);
-        return { allowed: false, reason: 'budget_exceeded', currentInvested: totalInvested };
-    }
-
-    // 3. Prevent spending too much on a single item (Max 30% of global budget)
-    const MAX_SINGLE_ITEM_COST = GLOBAL_BUDGET * 0.30;
-    if (estimatedPrice > MAX_SINGLE_ITEM_COST) {
-        console.warn(`[RISK MANAGER] Blocked buy for ${marketName}: Item is too expensive (${estimatedPrice.toFixed(2)}), exceeds 30% of global budget (${MAX_SINGLE_ITEM_COST.toFixed(2)})`);
-        return { allowed: false, reason: 'item_too_expensive' };
+    const basisQuery = db.prepare('SELECT market_name, basis_prices FROM Basis WHERE market_name = ?').get(marketName) as { market_name: string, basis_prices: string } | undefined;
+    if (basisQuery) {
+        const prices: number[] = JSON.parse(basisQuery.basis_prices);
+        itemExposureCount += prices.length;
     }
 
     if (itemExposureCount >= MAX_ITEM_EXPOSURE) {
         console.warn(`[RISK MANAGER] Blocked buy for ${marketName}: Max exposure limit reached (${itemExposureCount}/${MAX_ITEM_EXPOSURE})`);
         return { allowed: false, reason: 'max_exposure' };
+    }
+
+    // 2. Real-time Gaijin Wallet Balance Check
+    const liveBalance = await getWalletBalance();
+    if (liveBalance !== null) {
+        console.log(`[RISK MANAGER] Live Gaijin Wallet Balance: ${liveBalance.toFixed(2)} GJN. Required: ${estimatedPrice.toFixed(2)} GJN`);
+        if (estimatedPrice > liveBalance) {
+            console.warn(`[RISK MANAGER] Blocked buy for ${marketName}: Insufficient live balance (Price: ${estimatedPrice.toFixed(2)} GJN, Balance: ${liveBalance.toFixed(2)} GJN)`);
+            return { allowed: false, reason: 'budget_exceeded', availableBalance: liveBalance };
+        }
+    } else {
+        console.warn(`[RISK MANAGER] Could not fetch live wallet balance, proceeding with safety check.`);
     }
 
     return { allowed: true };
