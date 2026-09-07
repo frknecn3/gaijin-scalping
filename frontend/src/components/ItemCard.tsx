@@ -14,6 +14,11 @@ const ItemCard = ({ item }: Props) => {
 
     const [updatedVal, setUpdatedVal] = useState<{ buy: number, sell: number } | null>(null);
 
+    // When global refresh updates item prices, reset local single-item override
+    React.useEffect(() => {
+        setUpdatedVal(null);
+    }, [item.price, item.hash_name]);
+
     const handleRefresh = async () => {
         const res = await axios.get(`/item/${item.hash_name}`);
 

@@ -19,16 +19,24 @@ const Core = (props: Props) => {
   const [category, setCategory] = useState('')
   const [totals, setTotals] = useState<{buy: number, sell: number, profit?: number}>({buy: 0, sell: 0, profit: 0});
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [lastUpdated, setLastUpdated] = useState<string>('');
+  const [showUpdatedBadge, setShowUpdatedBadge] = useState<boolean>(false);
 
   const getItems = async (): Promise<void> => {
-    axios.get(`/orders?category=${category}`)
+    // Add cache-busting timestamp to prevent browser from caching stale /orders responses
+    axios.get(`/orders?category=${category}&_t=${Date.now()}`)
       .then(res => {
         console.log(res);
         setTotals(res.data.totals || {buy: 0, sell: 0});
         setItems(res.data.data
           .filter((item: HashType) => !item?.tags?.includes('type:key'))
-          .sort((a: HashType, b: HashType) => b.last2Volume - a.last2Volume))
+          .sort((a: HashType, b: HashType) => b.last2Volume - a.last2Volume));
 
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString();
+        setLastUpdated(timeStr);
+        setShowUpdatedBadge(true);
+        setTimeout(() => setShowUpdatedBadge(false), 4000);
       })
       .catch(err => console.log(err))
       .finally(() => setLoading(false))
@@ -161,13 +169,32 @@ const Core = (props: Props) => {
             <span className="text-red-400 font-semibold" title="Total active SELL orders (x0.85)">SELL: {totals.sell.toFixed(2)} GJN</span>
             <span className="text-white font-bold ml-2">TOTAL: {(totals.buy + totals.sell).toFixed(2)} GJN</span>
           </div>
-          <div className="text-xs text-gray-400 font-bold uppercase mt-2 mb-1">Realized Profit</div>
-          <div className="flex gap-4">
+          <div className="text-xs text-gray-400 font-bold uppercase mt-2 mb-1 flex items-center justify-between">
+            <span>Realized Profit</span>
+            {lastUpdated && (
+              <span className="text-[10px] text-gray-400 lowercase font-mono">
+                🕒 {lastUpdated}
+              </span>
+            )}
+          </div>
+          <div className="flex gap-4 items-center justify-between">
             <span className="text-green-400 font-bold" title="Total accumulated profit from all fulfilled sales">+{totals.profit?.toFixed(2) || "0.00"} GJN</span>
+            {showUpdatedBadge && (
+              <span className="text-xs font-bold text-emerald-300 bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 rounded animate-pulse">
+                ✓ Güncellendi
+              </span>
+            )}
           </div>
         </div>
 
       </div>
+
+      {showUpdatedBadge && (
+        <div className="text-center py-2 bg-emerald-500/10 border-y border-emerald-500/30 text-emerald-400 text-xs font-bold tracking-wide">
+          ✓ Veriler başarıyla yenilendi ({lastUpdated}) — {filteredItems.length} ürün listeleniyor
+        </div>
+      )}
+
       <div>
         <div className="grid gap-[40px] md:gap-[20px] grid-cols-[repeat(auto-fit,minmax(250px,1fr))] py-10 px-[5vw]">
           {
@@ -178,12 +205,8 @@ const Core = (props: Props) => {
                 "Görüntülenecek eşya yok"
                 :
                 filteredItems.map((item: HashType, i: number) => {
-
-                  // i == 1 ? console.log(item) : ''
-
                   return (
-                    <ItemCard item={item} key={i} />
-
+                    <ItemCard item={item} key={`${item.hash_name}-${item.price}-${item.buy_price}-${lastUpdated}`} />
                   )
                 })
           }
