@@ -5,32 +5,51 @@ dotenv.config();
 const token = process.env.TOKEN
 
 export const getInvAssets = async () => {
-    async function assetAPI(body:any) {
-        const res = await fetch("https://market-proxy.gaijin.net/assetAPI", {
-            method: "POST",
-            headers: { "content-type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams(body)
-        });
-        return res.json();
+    async function assetAPI(body: any, retries = 3) {
+        for (let i = 0; i < retries; i++) {
+            try {
+                const res = await fetch("https://market-proxy.gaijin.net/assetAPI", {
+                    method: "POST",
+                    headers: { "content-type": "application/x-www-form-urlencoded" },
+                    body: new URLSearchParams(body)
+                });
+                if (res.status === 429) {
+                    await sleep(Math.pow(2, i) * 1000);
+                    continue;
+                }
+                const text = await res.text();
+                if (!text || text.trim() === "") {
+                    if (i === retries - 1) return null;
+                    await sleep(1000);
+                    continue;
+                }
+                return JSON.parse(text);
+            } catch (err) {
+                if (i === retries - 1) return null;
+                await sleep(Math.pow(2, i) * 1000);
+            }
+        }
+        return null;
     }
 
     const res = await assetAPI({
         action: "GetContextContents",
-        token,
+        token: process.env.TOKEN,
         appid: 1067,
         contextid: 1
-    })
+    });
 
-    let assets = res.result.assets
-    assets = assets.flatMap((a:any) => {
-        return a.class.map((c:any) => ({
+    if (!res?.result?.assets || !Array.isArray(res.result.assets)) {
+        return [];
+    }
+
+    let assets = res.result.assets;
+    assets = assets.flatMap((a: any) => {
+        return (a.class || []).map((c: any) => ({
             assetId: a.id,
             id: c.value
         }));
     });
-
-
-
 
     return assets;
 }
