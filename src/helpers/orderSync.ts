@@ -1,4 +1,4 @@
-import { post } from './helpers.js';
+import { post, getInvAssets } from './helpers.js';
 import db from '../db/database.js';
 import { addBasis, consumeBasis, getAvailableBases } from './basisTracker.js';
 
@@ -133,6 +133,39 @@ export async function syncOpenOrders(): Promise<GaijinOpenOrder[]> {
                 });
             }
         })();
+
+        // Reconcile Basis with ACTUAL inventory from Gaijin
+        // If an item is NOT in the real Gaijin inventory, it MUST NOT exist in Basis!
+        try {
+            const realInv = await getInvAssets();
+            const idMapRows = db.prepare('SELECT market_name, asset_id FROM IdMap').all() as { market_name: string, asset_id: number }[];
+            const normalIdToMarket: Record<number, string> = {};
+            for (const r of idMapRows) normalIdToMarket[r.asset_id] = r.market_name;
+
+            const actualInvCounts: Record<string, number> = {};
+            for (const asset of realInv) {
+                const marketName = normalIdToMarket[Number(asset.id)];
+                if (marketName) {
+                    actualInvCounts[marketName] = (actualInvCounts[marketName] || 0) + 1;
+                }
+            }
+
+            const allBasis = db.prepare('SELECT market_name, basis_prices FROM Basis').all() as { market_name: string, basis_prices: string }[];
+            for (const b of allBasis) {
+                const actualCount = actualInvCounts[b.market_name] || 0;
+                let prices: number[] = JSON.parse(b.basis_prices);
+                if (actualCount === 0) {
+                    // Item is no longer in inventory! Remove ghost basis
+                    db.prepare('DELETE FROM Basis WHERE market_name = ?').run(b.market_name);
+                } else if (prices.length > actualCount) {
+                    // Prune excess ghost bases down to the actual quantity owned
+                    prices = prices.slice(0, actualCount);
+                    db.prepare('UPDATE Basis SET basis_prices = ? WHERE market_name = ?').run(JSON.stringify(prices), b.market_name);
+                }
+            }
+        } catch (invErr) {
+            console.error("[SYNC-ORDERS] Error reconciling Basis with live inventory:", invErr);
+        }
 
         return fetchedOrders.map(o => ({
             id: o.id.toString(),
