@@ -10,6 +10,7 @@ import db from './db/database.js';
 import snipeBuyRouter from "./routers/snipeBuy.route.js";
 import { startGuardLoop } from './guard.js';
 import { getBotSettings, updateBotSettings } from './helpers/settingsManager.js';
+import { syncOpenOrders } from './helpers/orderSync.js';
 dotenv.config();
 // Node 18+ (native fetch)
 
@@ -89,29 +90,52 @@ autoRefreshLoop();
 startGuardLoop();
 
 app.get('/orders', async (req, res) => {
+    // 1. Always do a live sync of open orders & trade history from Gaijin!
+    const liveOrders = await syncOpenOrders();
+
+    // 2. Query items from database
     const itemsQuery = db.prepare('SELECT data FROM Items').all() as { data: string }[];
     let items = itemsQuery.map(row => JSON.parse(row.data));
 
     if (req.query.category) {
         items = items.filter((item: any) => {
-            if (item.tags.includes(`type:${req.query.category}`))
-                return item
-        })
+            if (item.tags && item.tags.includes(`type:${req.query.category}`))
+                return item;
+        });
     }
 
-    const ordersQuery = db.prepare('SELECT * FROM Orders').all() as any[];
-    let openOrders = ordersQuery;
+    // 3. Map live active orders to items
+    const itemMarketSet = new Set(items.map((i: any) => i.hash_name));
 
     items = items.map((item: any) => {
         return {
             ...item,
-            active_orders: openOrders.filter((o: any) => o.market === item.hash_name)
-        }
+            active_orders: liveOrders.filter((o: any) => o.market === item.hash_name)
+        };
     });
+
+    // 4. If there are active orders for items not currently in the filtered Items table,
+    // synthesize an entry so they never disappear or get orphaned in the UI!
+    for (const order of liveOrders) {
+        if (!itemMarketSet.has(order.market)) {
+            itemMarketSet.add(order.market);
+            items.unshift({
+                hash_name: order.market,
+                name: order.market,
+                price: order.localPrice / 10000,
+                buy_price: order.localPrice / 10000,
+                profit: 0,
+                last2Volume: 0,
+                liquidityScore: 0,
+                tags: [],
+                active_orders: liveOrders.filter((o: any) => o.market === order.market)
+            });
+        }
+    }
 
     let totalBuy = 0;
     let totalSell = 0;
-    for (const o of openOrders) {
+    for (const o of liveOrders) {
         if (o.type === "BUY") totalBuy += (o.localPrice / 10000);
         if (o.type === "SELL") totalSell += (o.localPrice / 10000) * 0.85;
     }
@@ -128,9 +152,8 @@ app.get('/orders', async (req, res) => {
             profit: totalProfit
         },
         message: "Ürünler gönderildi."
-    })
-
-})
+    });
+});
 
 app.get('/item/:id', async (req, res) => {
 
