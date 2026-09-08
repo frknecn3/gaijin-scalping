@@ -8,6 +8,8 @@ interface BotSettings {
     minVolume: number;
     ignoreAllBasis: boolean;
     maxItemExposure: number;
+    dynamicProfitThreshold: number;
+    dynamicProfitPercentage: number;
 }
 
 interface SettingsModalProps {
@@ -22,7 +24,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         minStreak: 10,
         minVolume: 50,
         ignoreAllBasis: true,
-        maxItemExposure: 1
+        maxItemExposure: 1,
+        dynamicProfitThreshold: 1.00,
+        dynamicProfitPercentage: 5.0
     });
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -208,6 +212,37 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                             className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
                                         />
                                         <span className="text-[11px] text-gray-500 block mt-1">Aynı eşyadan aynı anda sahip olunabilecek max adet.</span>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 pt-4 border-t border-[#262c3b]">
+                                    <div>
+                                        <label className="block text-xs font-medium text-amber-300 mb-1">
+                                            Dinamik Kâr Eşiği ($)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={settings.dynamicProfitThreshold}
+                                            onChange={e => setSettings({ ...settings, dynamicProfitThreshold: parseFloat(e.target.value) || 0 })}
+                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                                        />
+                                        <span className="text-[11px] text-gray-500 block mt-1">Bu fiyatın üzerindeki eşyalarda yüzdelik kâr hesabı devreye girer.</span>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-medium text-amber-300 mb-1">
+                                            Hedef Kâr Yüzdesi (%)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            min="0.1"
+                                            value={settings.dynamicProfitPercentage}
+                                            onChange={e => setSettings({ ...settings, dynamicProfitPercentage: parseFloat(e.target.value) || 0 })}
+                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                                        />
+                                        <span className="text-[11px] text-gray-500 block mt-1">Düşük hacimli eşyalarda bu oranın 2 katı, yükseklerde 1 katı istenir.</span>
                                     </div>
                                 </div>
                             </div>

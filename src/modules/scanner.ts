@@ -82,7 +82,25 @@ export async function scanMarketForOpportunities() {
 
             const estimatedProfit = (lowestSell * 0.85) - (highestBuy + 0.01);
 
-            if (estimatedProfit >= MIN_PROFIT) {
+            let requiredProfit = MIN_PROFIT;
+
+            // Apply dynamic ROI calculation if item price exceeds threshold
+            if (highestBuy >= settings.dynamicProfitThreshold) {
+                let requiredPercentage = settings.dynamicProfitPercentage;
+                
+                // Scale requirement based on 48h volume
+                if (item.last2Volume >= 100) {
+                    requiredPercentage = settings.dynamicProfitPercentage; // 1x
+                } else if (item.last2Volume >= 50) {
+                    requiredPercentage = settings.dynamicProfitPercentage * 1.5; // 1.5x
+                } else {
+                    requiredPercentage = settings.dynamicProfitPercentage * 2.0; // 2x
+                }
+
+                requiredProfit = Math.max(MIN_PROFIT, highestBuy * (requiredPercentage / 100));
+            }
+
+            if (estimatedProfit >= requiredProfit) {
                 const targetBuyPrice = highestBuy + 0.01;
 
                 // FACT-CHECK: Prevent whale traps.

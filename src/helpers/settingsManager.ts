@@ -7,6 +7,8 @@ export interface BotSettings {
     minVolume: number;            // e.g. 50 (sales in 48h)
     ignoreAllBasis: boolean;      // liquidate mode: ignore basis and undercut based on spread only
     maxItemExposure: number;      // max number of copies of the same item allowed
+    dynamicProfitThreshold: number; // The price above which the dynamic ROI rule applies
+    dynamicProfitPercentage: number; // The base minimum percentage profit required
 }
 
 const DEFAULT_SETTINGS: BotSettings = {
@@ -15,7 +17,9 @@ const DEFAULT_SETTINGS: BotSettings = {
     minStreak: 10,
     minVolume: 50,
     ignoreAllBasis: true,
-    maxItemExposure: 1
+    maxItemExposure: 1,
+    dynamicProfitThreshold: 1.00,
+    dynamicProfitPercentage: 5.0
 };
 
 export function getBotSettings(): BotSettings {
@@ -37,6 +41,8 @@ export function getBotSettings(): BotSettings {
             minVolume: typeof map.minVolume === 'number' ? map.minVolume : DEFAULT_SETTINGS.minVolume,
             ignoreAllBasis: typeof map.ignoreAllBasis === 'boolean' ? map.ignoreAllBasis : DEFAULT_SETTINGS.ignoreAllBasis,
             maxItemExposure: typeof map.maxItemExposure === 'number' ? map.maxItemExposure : DEFAULT_SETTINGS.maxItemExposure,
+            dynamicProfitThreshold: typeof map.dynamicProfitThreshold === 'number' ? map.dynamicProfitThreshold : DEFAULT_SETTINGS.dynamicProfitThreshold,
+            dynamicProfitPercentage: typeof map.dynamicProfitPercentage === 'number' ? map.dynamicProfitPercentage : DEFAULT_SETTINGS.dynamicProfitPercentage,
         };
     } catch (e) {
         console.error("[SETTINGS] Error reading settings from DB, using defaults:", e);
@@ -53,6 +59,8 @@ export function updateBotSettings(partial: Partial<BotSettings>): BotSettings {
         minVolume: partial.minVolume !== undefined ? Number(partial.minVolume) : current.minVolume,
         ignoreAllBasis: partial.ignoreAllBasis !== undefined ? Boolean(partial.ignoreAllBasis) : current.ignoreAllBasis,
         maxItemExposure: partial.maxItemExposure !== undefined ? Number(partial.maxItemExposure) : current.maxItemExposure,
+        dynamicProfitThreshold: partial.dynamicProfitThreshold !== undefined ? Number(partial.dynamicProfitThreshold) : current.dynamicProfitThreshold,
+        dynamicProfitPercentage: partial.dynamicProfitPercentage !== undefined ? Number(partial.dynamicProfitPercentage) : current.dynamicProfitPercentage,
     };
 
     const stmt = db.prepare('INSERT OR REPLACE INTO Settings (key, value) VALUES (?, ?)');
