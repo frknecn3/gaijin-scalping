@@ -123,13 +123,26 @@ export async function startRenewOrders(jobState: JobState, isHardRefresh: boolea
                         ? Math.max(...validRecentTransactions.map((d: any) => d[1] / 10000))
                         : 0;
 
+                    // 24-hour baseline metrics for fair-value verification
+                    const oneDayInSeconds = 24 * 60 * 60;
+                    const transactions24h = stat1h.filter((d: any) => (nowInSeconds - d[0]) <= oneDayInSeconds);
+                    const latest1d = stat1d[stat1d.length - 1];
+                    const avgPrice24h = latest1d && latest1d[1] ? latest1d[1] / 10000 : 0;
+                    const highestOfLast24h = transactions24h.length > 0
+                        ? Math.max(...transactions24h.map((d: any) => d[1] / 10000))
+                        : avgPrice24h;
+                    const salesCount24h = transactions24h.length;
+
                     // Final hard-check: skip dead volume items, UNLESS it's a brand new item (<= 3 days of history)
                     if (!isHardRefresh && liquidity.last2Volume === 0 && stat1d.length > 3) return;
 
                     enrichedItems.push({
                         ...item,
                         ...liquidity,
-                        highestOfLast10
+                        highestOfLast10,
+                        avgPrice24h,
+                        highestOfLast24h,
+                        salesCount24h
                     });
                 } catch (err) {
                     console.log("HATA:", item.name);

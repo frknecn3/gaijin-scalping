@@ -103,11 +103,23 @@ export async function scanMarketForOpportunities() {
             if (estimatedProfit >= requiredProfit) {
                 const targetBuyPrice = highestBuy + 0.01;
 
-                // FACT-CHECK: Prevent whale traps.
-                // If the required buy price is > 10% higher than the highest transaction 
-                // in the last 3 hours, this is a manipulated spread. Do not buy!
-                if (item.highestOfLast10 && targetBuyPrice > item.highestOfLast10 * 1.10) {
-                    console.log(`[SCANNER] 🚩 FACT-CHECK FAILED for ${item.hash_name}. Target Buy (${targetBuyPrice}) is dangerously higher than recent max (${item.highestOfLast10}).`);
+                // 1. FAIR-VALUE ANCHOR: Prevent Phantom Spreads (e.g. Chinese machine gun trap)
+                // If lowestSell is > 35% higher than the 24h average actual trade price,
+                // the current sell order is an empty book / outlier illusion. Do not buy!
+                if (item.avgPrice24h && item.avgPrice24h > 0) {
+                    const maxAllowedSell = item.avgPrice24h * 1.35;
+                    if (lowestSell > maxAllowedSell) {
+                        console.log(`[SCANNER] 🚩 PHANTOM SPREAD DETECTED for ${item.hash_name}. Lowest sell (${lowestSell.toFixed(2)}) is >35% above 24h avg trade price (${item.avgPrice24h.toFixed(2)}). Skipping.`);
+                        continue;
+                    }
+                }
+
+                // 2. FACT-CHECK: Prevent whale traps with 24h fallback.
+                // If the required buy price is > 10% higher than recent transactions (last 3h or last 24h),
+                // this is a manipulated spread. Do not buy!
+                const referenceMaxPrice = item.highestOfLast10 || item.highestOfLast24h || item.avgPrice24h;
+                if (referenceMaxPrice && referenceMaxPrice > 0 && targetBuyPrice > referenceMaxPrice * 1.10) {
+                    console.log(`[SCANNER] 🚩 FACT-CHECK FAILED for ${item.hash_name}. Target Buy (${targetBuyPrice.toFixed(2)}) is dangerously higher than reference price (${referenceMaxPrice.toFixed(2)}).`);
                     continue;
                 }
 
