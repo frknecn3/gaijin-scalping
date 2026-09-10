@@ -9,6 +9,7 @@ export interface BotSettings {
     maxItemExposure: number;      // max number of copies of the same item allowed
     dynamicProfitThreshold: number; // The price above which the dynamic ROI rule applies
     dynamicProfitPercentage: number; // The base minimum percentage profit required
+    dynamicMinVolume: number;       // Min 48h volume required for items >= dynamicProfitThreshold
 }
 
 const DEFAULT_SETTINGS: BotSettings = {
@@ -19,7 +20,8 @@ const DEFAULT_SETTINGS: BotSettings = {
     ignoreAllBasis: true,
     maxItemExposure: 1,
     dynamicProfitThreshold: 1.00,
-    dynamicProfitPercentage: 5.0
+    dynamicProfitPercentage: 5.0,
+    dynamicMinVolume: 25
 };
 
 export function getBotSettings(): BotSettings {
@@ -43,6 +45,7 @@ export function getBotSettings(): BotSettings {
             maxItemExposure: typeof map.maxItemExposure === 'number' ? map.maxItemExposure : DEFAULT_SETTINGS.maxItemExposure,
             dynamicProfitThreshold: typeof map.dynamicProfitThreshold === 'number' ? map.dynamicProfitThreshold : DEFAULT_SETTINGS.dynamicProfitThreshold,
             dynamicProfitPercentage: typeof map.dynamicProfitPercentage === 'number' ? map.dynamicProfitPercentage : DEFAULT_SETTINGS.dynamicProfitPercentage,
+            dynamicMinVolume: typeof map.dynamicMinVolume === 'number' ? map.dynamicMinVolume : DEFAULT_SETTINGS.dynamicMinVolume,
         };
     } catch (e) {
         console.error("[SETTINGS] Error reading settings from DB, using defaults:", e);
@@ -61,6 +64,7 @@ export function updateBotSettings(partial: Partial<BotSettings>): BotSettings {
         maxItemExposure: partial.maxItemExposure !== undefined ? Number(partial.maxItemExposure) : current.maxItemExposure,
         dynamicProfitThreshold: partial.dynamicProfitThreshold !== undefined ? Number(partial.dynamicProfitThreshold) : current.dynamicProfitThreshold,
         dynamicProfitPercentage: partial.dynamicProfitPercentage !== undefined ? Number(partial.dynamicProfitPercentage) : current.dynamicProfitPercentage,
+        dynamicMinVolume: partial.dynamicMinVolume !== undefined ? Number(partial.dynamicMinVolume) : current.dynamicMinVolume,
     };
 
     const stmt = db.prepare('INSERT OR REPLACE INTO Settings (key, value) VALUES (?, ?)');

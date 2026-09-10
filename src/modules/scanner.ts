@@ -35,8 +35,12 @@ export async function scanMarketForOpportunities() {
             continue;
         }
 
-        // Basic filter: liquid enough?
-        if (item.last2Volume < MIN_VOLUME) continue;
+        // Tier-specific volume requirement:
+        // Items >= dynamicProfitThreshold use dynamicMinVolume, cheaper items use standard minVolume
+        const isDynamicTier = (item.buy_price || 0) >= settings.dynamicProfitThreshold;
+        const requiredVolume = isDynamicTier ? settings.dynamicMinVolume : settings.minVolume;
+
+        if (item.last2Volume < requiredVolume) continue;
 
         // STURDINESS GUARD: The "40 Rounds" rule.
         if (!item.profit_streak || item.profit_streak < MIN_STREAK) {
@@ -79,6 +83,11 @@ export async function scanMarketForOpportunities() {
             const highestBuy = marketBooks.response.BUY[0]?.[0] / 10000;
 
             if (!lowestSell || !highestBuy) continue;
+
+            // Check live book price tier against required volume
+            const isLiveDynamicTier = highestBuy >= settings.dynamicProfitThreshold;
+            const liveRequiredVolume = isLiveDynamicTier ? settings.dynamicMinVolume : settings.minVolume;
+            if (item.last2Volume < liveRequiredVolume) continue;
 
             const estimatedProfit = (lowestSell * 0.85) - (highestBuy + 0.01);
 

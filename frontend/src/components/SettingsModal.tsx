@@ -10,6 +10,7 @@ interface BotSettings {
     maxItemExposure: number;
     dynamicProfitThreshold: number;
     dynamicProfitPercentage: number;
+    dynamicMinVolume: number;
 }
 
 interface SettingsModalProps {
@@ -26,7 +27,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         ignoreAllBasis: true,
         maxItemExposure: 1,
         dynamicProfitThreshold: 1.00,
-        dynamicProfitPercentage: 5.0
+        dynamicProfitPercentage: 5.0,
+        dynamicMinVolume: 25
     });
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -242,6 +244,21 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                             className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
                                         />
                                         <span className="text-[11px] text-gray-500 block mt-1">Düşük hacimli eşyalarda bu oranın 2 katı, yükseklerde 1 katı istenir.</span>
+                                    </div>
+
+                                    <div className="sm:col-span-2">
+                                        <label className="block text-xs font-medium text-amber-300 mb-1">
+                                            Dinamik Min Hacim (Eşik Üstü Eşyalar İçin 48s Hacim)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="5"
+                                            min="0"
+                                            value={settings.dynamicMinVolume}
+                                            onChange={e => setSettings({ ...settings, dynamicMinVolume: parseInt(e.target.value) || 0 })}
+                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                                        />
+                                        <span className="text-[11px] text-gray-500 block mt-1">Fiyatı dinamik eşiğin üzerindeki pahalı eşyalar için aranan asgari 48 saatlik satış adedi (Örn: 25).</span>
                                     </div>
                                 </div>
                             </div>
