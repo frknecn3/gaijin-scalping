@@ -66,6 +66,11 @@ db.exec(`
     id TEXT PRIMARY KEY,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS BuyLocks (
+    market_name TEXT PRIMARY KEY,
+    locked_until INTEGER
+  );
 `);
 
 export default db;

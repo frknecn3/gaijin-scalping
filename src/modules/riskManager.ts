@@ -34,10 +34,36 @@ export function recordTradeResult(profit: number) {
     }
 }
 
+export function acquireBuyLock(marketName: string, durationSeconds = 60): boolean {
+    const now = Date.now();
+    const existing = db.prepare('SELECT locked_until FROM BuyLocks WHERE market_name = ?').get(marketName) as { locked_until: number } | undefined;
+    if (existing && existing.locked_until > now) {
+        return false;
+    }
+    const lockedUntil = now + (durationSeconds * 1000);
+    db.prepare('INSERT OR REPLACE INTO BuyLocks (market_name, locked_until) VALUES (?, ?)').run(marketName, lockedUntil);
+    return true;
+}
+
+export function releaseBuyLock(marketName: string): void {
+    db.prepare('DELETE FROM BuyLocks WHERE market_name = ?').run(marketName);
+}
+
+export function isBuyLocked(marketName: string): boolean {
+    const row = db.prepare('SELECT locked_until FROM BuyLocks WHERE market_name = ?').get(marketName) as { locked_until: number } | undefined;
+    return !!(row && row.locked_until > Date.now());
+}
+
 export async function canBuyItem(marketName: string, estimatedPrice: number): Promise<{ allowed: boolean, reason?: string, availableBalance?: number }> {
     if (CIRCUIT_BREAKER_ACTIVE) {
         console.warn(`[RISK MANAGER] Blocked buy for ${marketName}: Circuit breaker is active.`);
         return { allowed: false, reason: 'circuit_breaker' };
+    }
+
+    // 0. Duplicate Buy Lock check
+    if (isBuyLocked(marketName)) {
+        console.warn(`[RISK MANAGER] Blocked buy for ${marketName}: Item has an active buy lock (duplicate prevention).`);
+        return { allowed: false, reason: 'already_locked' };
     }
 
     // 1. Exposure and Open Order check

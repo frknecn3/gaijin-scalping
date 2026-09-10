@@ -52,7 +52,8 @@ app.get('/api/profits', async (req, res) => {
         await syncUserHistory();
         const rows = db.prepare('SELECT * FROM Profits ORDER BY id DESC LIMIT 50').all();
         const total = db.prepare('SELECT SUM(profit) as total FROM Profits').get() as { total: number };
-        res.status(200).json({ success: true, total: total.total || 0, profits: rows });
+        const today = db.prepare("SELECT SUM(profit) as today FROM Profits WHERE DATE(timestamp) = DATE('now')").get() as { today: number };
+        res.status(200).json({ success: true, total: total.total || 0, today: today.today || 0, profits: rows });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e?.message });
     }
@@ -154,6 +155,8 @@ app.get('/orders', async (req, res) => {
 
     const totalProfitQuery = db.prepare('SELECT SUM(profit) as total FROM Profits').get() as { total: number };
     const totalProfit = totalProfitQuery.total || 0;
+    const todayProfitQuery = db.prepare("SELECT SUM(profit) as today FROM Profits WHERE DATE(timestamp) = DATE('now')").get() as { today: number };
+    const todayProfit = todayProfitQuery.today || 0;
 
     res.status(200).send({
         success: true,
@@ -161,7 +164,8 @@ app.get('/orders', async (req, res) => {
         totals: {
             buy: totalBuy,
             sell: totalSell,
-            profit: totalProfit
+            profit: totalProfit,
+            todayProfit: todayProfit
         },
         message: "Ürünler gönderildi."
     });

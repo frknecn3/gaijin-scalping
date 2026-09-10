@@ -111,7 +111,7 @@ const checkStandingOrders = async () => {
                 const idx = activeOrdersTracker.findIndex(o => o.id === item.id);
                 if (idx !== -1) activeOrdersTracker.splice(idx, 1);
 
-                const res1 = await marketPost({
+                const res1 = await post({
                     action: "cancel_order",
                     pairId: item.pairId,
                     orderId: item.id,
@@ -120,6 +120,13 @@ const checkStandingOrders = async () => {
 
                 if (!res1?.response?.success) {
                     console.log("Failed to cancel BUY order, skipping relist.");
+                    continue;
+                }
+
+                // Guard check: make sure another BUY order for this market hasn't appeared
+                const anotherBuyExists = activeOrdersTracker.some(o => o.type === "BUY" && o.market === item.market);
+                if (anotherBuyExists) {
+                    console.warn(`[GUARD] Skipped relisting BUY for ${item.market}: Another BUY order already exists for this market.`);
                     continue;
                 }
 
@@ -143,11 +150,20 @@ const checkStandingOrders = async () => {
                 })
 
                 if (res?.response?.success) {
+                    const newOrderId = res.response.orderId?.toString() || `pending_${Date.now()}`;
                     activeOrdersTracker.push({
+                        id: newOrderId,
                         type: "BUY",
                         market: item.market,
                         localPrice: priceToSet
                     });
+                    db.prepare('INSERT OR REPLACE INTO Orders (id, pairId, market, type, localPrice) VALUES (?, ?, ?, ?, ?)').run(
+                        newOrderId,
+                        item.pairId || '',
+                        item.market,
+                        'BUY',
+                        priceToSet
+                    );
                 }
             }
         }
@@ -206,7 +222,7 @@ const checkStandingOrders = async () => {
                 const idx = activeOrdersTracker.findIndex(o => o.id === item.id);
                 if (idx !== -1) activeOrdersTracker.splice(idx, 1);
 
-                const res1 = await marketPost({
+                const res1 = await post({
                     action: "cancel_order",
                     pairId: item.pairId,
                     orderId: item.id,

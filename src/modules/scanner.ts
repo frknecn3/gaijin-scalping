@@ -1,5 +1,5 @@
 import db from '../db/database.js';
-import { canBuyItem } from './riskManager.js';
+import { canBuyItem, acquireBuyLock, releaseBuyLock, isBuyLocked } from './riskManager.js';
 import { post, getPairStat, calculateLiquidityScore } from '../helpers/helpers.js';
 import { syncOpenOrders } from '../helpers/orderSync.js';
 import { getBotSettings } from '../helpers/settingsManager.js';
@@ -30,8 +30,8 @@ export async function scanMarketForOpportunities() {
         // Skip keys or explicitly ignored items
         if (item.tags?.includes('type:key')) continue;
 
-        // Skip items we are ALREADY buying (open BUY order exists)
-        if (currentlyBuying.has(item.hash_name)) {
+        // Skip items we are ALREADY buying (open BUY order exists or active buy lock)
+        if (currentlyBuying.has(item.hash_name) || isBuyLocked(item.hash_name)) {
             continue;
         }
 
@@ -60,7 +60,7 @@ export async function scanMarketForOpportunities() {
 
     for (const { item, score } of scoredItems) {
         // Double-check if this item became active during this scan iteration
-        if (currentlyBuying.has(item.hash_name)) {
+        if (currentlyBuying.has(item.hash_name) || isBuyLocked(item.hash_name)) {
             continue;
         }
 
@@ -153,6 +153,12 @@ export async function scanMarketForOpportunities() {
 }
 
 async function placeBuyOrder(marketName: string, targetBuyPrice: number): Promise<boolean> {
+    const locked = acquireBuyLock(marketName, 90); // 90 seconds protection lock
+    if (!locked) {
+        console.warn(`[SCANNER] Prevented duplicate buy order for ${marketName}: Buy lock already held.`);
+        return false;
+    }
+
     console.log(`[SCANNER] Placing autonomous BUY order for ${marketName} at ${targetBuyPrice.toFixed(2)} GJN`);
 
     const rawPrice = Math.round(targetBuyPrice * 10000);
@@ -187,6 +193,7 @@ async function placeBuyOrder(marketName: string, targetBuyPrice: number): Promis
         return true;
     } else {
         console.log(`[SCANNER] Failed to place BUY order for ${marketName}:`, res?.response?.error || 'Unknown error');
+        releaseBuyLock(marketName);
         return false;
     }
 }

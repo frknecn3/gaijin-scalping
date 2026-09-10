@@ -119,11 +119,19 @@ export async function syncOpenOrders(): Promise<GaijinOpenOrder[]> {
 
         const fetchedOrders: any[] = json.response;
 
-        // Update database transactionally - overwrite with exactly what Gaijin reports
+        // Update database transactionally - overwrite confirmed orders while preserving in-flight pending orders
         const insertOrder = db.prepare('INSERT OR REPLACE INTO Orders (id, pairId, market, type, localPrice) VALUES (@id, @pairId, @market, @type, @localPrice)');
         db.transaction(() => {
-            db.prepare('DELETE FROM Orders').run();
+            // 1. Preserve recent pending orders in flight
+            const pendingOrders = db.prepare("SELECT * FROM Orders WHERE id LIKE 'pending_%'").all() as GaijinOpenOrder[];
+
+            // 2. Clear non-pending orders
+            db.prepare("DELETE FROM Orders WHERE id NOT LIKE 'pending_%'").run();
+
+            // 3. Insert fresh orders from Gaijin
+            const fetchedMarkets = new Set<string>();
             for (const o of fetchedOrders) {
+                fetchedMarkets.add(o.market);
                 insertOrder.run({
                     id: o.id.toString(),
                     pairId: o.pairId ? o.pairId.toString() : '',
@@ -131,6 +139,17 @@ export async function syncOpenOrders(): Promise<GaijinOpenOrder[]> {
                     type: o.type,
                     localPrice: Number(o.localPrice)
                 });
+            }
+
+            // 4. Clean up pending orders if now confirmed by Gaijin or if expired (> 45s)
+            const now = Date.now();
+            for (const p of pendingOrders) {
+                const parts = p.id.toString().split('_');
+                const orderTs = Number(parts[1]) || 0;
+                const isExpired = (now - orderTs) > 45000;
+                if (fetchedMarkets.has(p.market) || isExpired) {
+                    db.prepare('DELETE FROM Orders WHERE id = ?').run(p.id);
+                }
             }
         })();
 

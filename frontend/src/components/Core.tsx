@@ -17,7 +17,7 @@ const Core = (props: Props) => {
   const [isRenewingOrders, setIsRenewingOrders] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   const [category, setCategory] = useState('')
-  const [totals, setTotals] = useState<{buy: number, sell: number, profit?: number}>({buy: 0, sell: 0, profit: 0});
+  const [totals, setTotals] = useState<{buy: number, sell: number, profit?: number, todayProfit?: number}>({buy: 0, sell: 0, profit: 0, todayProfit: 0});
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [lastUpdated, setLastUpdated] = useState<string>('');
   const [showUpdatedBadge, setShowUpdatedBadge] = useState<boolean>(false);
@@ -182,8 +182,16 @@ const Core = (props: Props) => {
               </span>
             )}
           </div>
-          <div className="flex gap-4 items-center justify-between">
-            <span className="text-green-400 font-bold" title="Total accumulated profit from all fulfilled sales">+{totals.profit?.toFixed(2) || "0.00"} GJN</span>
+          <div className="flex gap-3 items-center justify-between">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-emerald-400 font-extrabold text-sm" title="Bugün gerçekleşen satışlardan kazanılan net kâr">
+                <span className="text-xs text-gray-400 font-normal">Bugün: </span>+{totals.todayProfit?.toFixed(2) || "0.00"} GJN
+              </span>
+              <span className="text-gray-500 font-bold">|</span>
+              <span className="text-gray-300 font-semibold text-xs" title="Tüm zamanlar toplam net kâr">
+                <span className="text-gray-400 font-normal">Toplam: </span>+{totals.profit?.toFixed(2) || "0.00"} GJN
+              </span>
+            </div>
             {showUpdatedBadge && (
               <span className="text-xs font-bold text-emerald-300 bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 rounded animate-pulse">
                 ✓ Güncellendi
