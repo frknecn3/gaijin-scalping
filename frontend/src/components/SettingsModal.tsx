@@ -119,7 +119,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         <input
                                             type="number"
                                             step="0.01"
-                                            min="0.01"
                                             value={settings.guardMinProfit}
                                             onChange={e => setSettings({ ...settings, guardMinProfit: parseFloat(e.target.value) || 0.01 })}
                                             className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500"
@@ -236,7 +235,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         </label>
                                         <input
                                             type="number"
-                                            step="0.1"
+                                            step="0.01"
                                             min="0.1"
                                             value={settings.dynamicProfitPercentage}
                                             onChange={e => setSettings({ ...settings, dynamicProfitPercentage: parseFloat(e.target.value) || 0 })}
