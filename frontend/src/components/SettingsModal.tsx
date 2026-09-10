@@ -191,7 +191,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         </label>
                                         <input
                                             type="number"
-                                            step="5"
+                                            step="1"
                                             min="0"
                                             value={settings.minVolume}
                                             onChange={e => setSettings({ ...settings, minVolume: parseInt(e.target.value) || 0 })}
@@ -252,7 +252,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         </label>
                                         <input
                                             type="number"
-                                            step="5"
+                                            step="1"
                                             min="0"
                                             value={settings.dynamicMinVolume}
                                             onChange={e => setSettings({ ...settings, dynamicMinVolume: parseInt(e.target.value) || 0 })}
