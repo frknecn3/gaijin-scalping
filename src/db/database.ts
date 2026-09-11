@@ -13,7 +13,8 @@ db.exec(`
     pairId TEXT,
     market TEXT,
     type TEXT,
-    localPrice INTEGER
+    localPrice INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
   CREATE TABLE IF NOT EXISTS Items (
@@ -72,5 +73,10 @@ db.exec(`
     locked_until INTEGER
   );
 `);
+
+// Safe migrations for existing databases
+try {
+  db.exec('ALTER TABLE Orders ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP');
+} catch {}
 
 export default db;

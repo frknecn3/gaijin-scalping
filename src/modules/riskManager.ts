@@ -104,13 +104,28 @@ export async function canBuyItem(marketName: string, estimatedPrice: number): Pr
         return { allowed: false, reason: 'max_exposure' };
     }
 
-    // 2. Real-time Gaijin Wallet Balance Check
+    // 1.5 Hard Maximum Item Price Cap
+    if (settings.maxItemPrice > 0 && estimatedPrice > settings.maxItemPrice) {
+        console.warn(`[RISK MANAGER] Blocked buy for ${marketName}: Estimated price (${estimatedPrice.toFixed(2)} GJN) exceeds maxItemPrice ceiling (${settings.maxItemPrice.toFixed(2)} GJN).`);
+        return { allowed: false, reason: 'max_price_exceeded' };
+    }
+
+    // 2. Real-time Gaijin Wallet Balance Check & Bankroll Allocation Cap
     const liveBalance = await getWalletBalance();
     if (liveBalance !== null) {
         console.log(`[RISK MANAGER] Live Gaijin Wallet Balance: ${liveBalance.toFixed(2)} GJN. Required: ${estimatedPrice.toFixed(2)} GJN`);
         if (estimatedPrice > liveBalance) {
             console.warn(`[RISK MANAGER] Blocked buy for ${marketName}: Insufficient live balance (Price: ${estimatedPrice.toFixed(2)} GJN, Balance: ${liveBalance.toFixed(2)} GJN)`);
             return { allowed: false, reason: 'budget_exceeded', availableBalance: liveBalance };
+        }
+
+        // Single item bankroll percentage cap (prevent crippling cashflow)
+        if (settings.maxWalletPercentPerItem > 0) {
+            const maxAllowedForSingleItem = liveBalance * (settings.maxWalletPercentPerItem / 100);
+            if (estimatedPrice > maxAllowedForSingleItem) {
+                console.warn(`[RISK MANAGER] Blocked buy for ${marketName}: Price (${estimatedPrice.toFixed(2)} GJN) exceeds ${settings.maxWalletPercentPerItem}% of wallet (${maxAllowedForSingleItem.toFixed(2)} GJN).`);
+                return { allowed: false, reason: 'bankroll_risk', availableBalance: liveBalance };
+            }
         }
     } else {
         console.warn(`[RISK MANAGER] Could not fetch live wallet balance, proceeding with safety check.`);

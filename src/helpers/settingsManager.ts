@@ -10,6 +10,13 @@ export interface BotSettings {
     dynamicProfitThreshold: number; // The price above which the dynamic ROI rule applies
     dynamicProfitPercentage: number; // The base minimum percentage profit required
     dynamicMinVolume: number;       // Min 48h volume required for items >= dynamicProfitThreshold
+    fallingKnifeProtection: boolean;      // Enable downward trend safeguard
+    fallingKnifeDropPercent: number;     // Drop % in last 30m (default: 8.0)
+    fallingKnifeMinDelta: number;        // Minimum absolute GJN drop (default: 0.05)
+    buyOrderTtlMinutes: number;          // Max lifetime for outbid/unfulfilled buy orders (default: 15)
+    inventoryHoldTimeoutHours: number;   // Auto-breakeven threshold for slow inventory (default: 2)
+    maxItemPrice: number;                // Absolute maximum price allowed for any purchase (default: 4.00 GJN)
+    maxWalletPercentPerItem: number;     // Maximum percentage of wallet allowed for a single item (default: 20%)
 }
 
 const DEFAULT_SETTINGS: BotSettings = {
@@ -21,7 +28,14 @@ const DEFAULT_SETTINGS: BotSettings = {
     maxItemExposure: 1,
     dynamicProfitThreshold: 1.00,
     dynamicProfitPercentage: 5.0,
-    dynamicMinVolume: 25
+    dynamicMinVolume: 25,
+    fallingKnifeProtection: true,
+    fallingKnifeDropPercent: 8.0,
+    fallingKnifeMinDelta: 0.05,
+    buyOrderTtlMinutes: 15,
+    inventoryHoldTimeoutHours: 2,
+    maxItemPrice: 4.00,
+    maxWalletPercentPerItem: 20.0
 };
 
 export function getBotSettings(): BotSettings {
@@ -46,6 +60,13 @@ export function getBotSettings(): BotSettings {
             dynamicProfitThreshold: typeof map.dynamicProfitThreshold === 'number' ? map.dynamicProfitThreshold : DEFAULT_SETTINGS.dynamicProfitThreshold,
             dynamicProfitPercentage: typeof map.dynamicProfitPercentage === 'number' ? map.dynamicProfitPercentage : DEFAULT_SETTINGS.dynamicProfitPercentage,
             dynamicMinVolume: typeof map.dynamicMinVolume === 'number' ? map.dynamicMinVolume : DEFAULT_SETTINGS.dynamicMinVolume,
+            fallingKnifeProtection: typeof map.fallingKnifeProtection === 'boolean' ? map.fallingKnifeProtection : DEFAULT_SETTINGS.fallingKnifeProtection,
+            fallingKnifeDropPercent: typeof map.fallingKnifeDropPercent === 'number' ? map.fallingKnifeDropPercent : DEFAULT_SETTINGS.fallingKnifeDropPercent,
+            fallingKnifeMinDelta: typeof map.fallingKnifeMinDelta === 'number' ? map.fallingKnifeMinDelta : DEFAULT_SETTINGS.fallingKnifeMinDelta,
+            buyOrderTtlMinutes: typeof map.buyOrderTtlMinutes === 'number' ? map.buyOrderTtlMinutes : DEFAULT_SETTINGS.buyOrderTtlMinutes,
+            inventoryHoldTimeoutHours: typeof map.inventoryHoldTimeoutHours === 'number' ? map.inventoryHoldTimeoutHours : DEFAULT_SETTINGS.inventoryHoldTimeoutHours,
+            maxItemPrice: typeof map.maxItemPrice === 'number' ? map.maxItemPrice : DEFAULT_SETTINGS.maxItemPrice,
+            maxWalletPercentPerItem: typeof map.maxWalletPercentPerItem === 'number' ? map.maxWalletPercentPerItem : DEFAULT_SETTINGS.maxWalletPercentPerItem,
         };
     } catch (e) {
         console.error("[SETTINGS] Error reading settings from DB, using defaults:", e);
@@ -65,6 +86,13 @@ export function updateBotSettings(partial: Partial<BotSettings>): BotSettings {
         dynamicProfitThreshold: partial.dynamicProfitThreshold !== undefined ? Number(partial.dynamicProfitThreshold) : current.dynamicProfitThreshold,
         dynamicProfitPercentage: partial.dynamicProfitPercentage !== undefined ? Number(partial.dynamicProfitPercentage) : current.dynamicProfitPercentage,
         dynamicMinVolume: partial.dynamicMinVolume !== undefined ? Number(partial.dynamicMinVolume) : current.dynamicMinVolume,
+        fallingKnifeProtection: partial.fallingKnifeProtection !== undefined ? Boolean(partial.fallingKnifeProtection) : current.fallingKnifeProtection,
+        fallingKnifeDropPercent: partial.fallingKnifeDropPercent !== undefined ? Number(partial.fallingKnifeDropPercent) : current.fallingKnifeDropPercent,
+        fallingKnifeMinDelta: partial.fallingKnifeMinDelta !== undefined ? Number(partial.fallingKnifeMinDelta) : current.fallingKnifeMinDelta,
+        buyOrderTtlMinutes: partial.buyOrderTtlMinutes !== undefined ? Number(partial.buyOrderTtlMinutes) : current.buyOrderTtlMinutes,
+        inventoryHoldTimeoutHours: partial.inventoryHoldTimeoutHours !== undefined ? Number(partial.inventoryHoldTimeoutHours) : current.inventoryHoldTimeoutHours,
+        maxItemPrice: partial.maxItemPrice !== undefined ? Number(partial.maxItemPrice) : current.maxItemPrice,
+        maxWalletPercentPerItem: partial.maxWalletPercentPerItem !== undefined ? Number(partial.maxWalletPercentPerItem) : current.maxWalletPercentPerItem,
     };
 
     const stmt = db.prepare('INSERT OR REPLACE INTO Settings (key, value) VALUES (?, ?)');

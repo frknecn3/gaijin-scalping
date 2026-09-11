@@ -13,6 +13,7 @@ export interface GaijinOpenOrder {
     market: string;
     type: 'BUY' | 'SELL';
     localPrice: number;
+    created_at?: string;
 }
 
 export interface GaijinHistoryEvent {
@@ -119,21 +120,24 @@ export async function syncOpenOrders(): Promise<GaijinOpenOrder[]> {
 
         const fetchedOrders: any[] = json.response;
 
-        // Update database transactionally - overwrite confirmed orders while preserving in-flight pending orders
-        const insertOrder = db.prepare('INSERT OR REPLACE INTO Orders (id, pairId, market, type, localPrice) VALUES (@id, @pairId, @market, @type, @localPrice)');
+        const upsertOrder = db.prepare(`
+            INSERT INTO Orders (id, pairId, market, type, localPrice, created_at)
+            VALUES (@id, @pairId, @market, @type, @localPrice, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+                pairId = excluded.pairId,
+                localPrice = excluded.localPrice
+        `);
+
         db.transaction(() => {
-            // 1. Preserve recent pending orders in flight
-            const pendingOrders = db.prepare("SELECT * FROM Orders WHERE id LIKE 'pending_%'").all() as GaijinOpenOrder[];
-
-            // 2. Clear non-pending orders
-            db.prepare("DELETE FROM Orders WHERE id NOT LIKE 'pending_%'").run();
-
-            // 3. Insert fresh orders from Gaijin
+            const fetchedIds = new Set<string>();
             const fetchedMarkets = new Set<string>();
+
             for (const o of fetchedOrders) {
+                const idStr = o.id.toString();
+                fetchedIds.add(idStr);
                 fetchedMarkets.add(o.market);
-                insertOrder.run({
-                    id: o.id.toString(),
+                upsertOrder.run({
+                    id: idStr,
                     pairId: o.pairId ? o.pairId.toString() : '',
                     market: o.market,
                     type: o.type,
@@ -141,7 +145,17 @@ export async function syncOpenOrders(): Promise<GaijinOpenOrder[]> {
                 });
             }
 
-            // 4. Clean up pending orders if now confirmed by Gaijin or if expired (> 45s)
+            // Remove confirmed orders that are no longer in Gaijin's active open orders
+            const allDbOrders = db.prepare("SELECT id FROM Orders WHERE id NOT LIKE 'pending_%'").all() as { id: string }[];
+            const deleteOrder = db.prepare("DELETE FROM Orders WHERE id = ?");
+            for (const row of allDbOrders) {
+                if (!fetchedIds.has(row.id)) {
+                    deleteOrder.run(row.id);
+                }
+            }
+
+            // Clean up pending orders if now confirmed by Gaijin or if expired (> 45s)
+            const pendingOrders = db.prepare("SELECT * FROM Orders WHERE id LIKE 'pending_%'").all() as GaijinOpenOrder[];
             const now = Date.now();
             for (const p of pendingOrders) {
                 const parts = p.id.toString().split('_');
@@ -195,13 +209,8 @@ export async function syncOpenOrders(): Promise<GaijinOpenOrder[]> {
             console.error("[SYNC-ORDERS] Error reconciling Basis with live inventory:", invErr);
         }
 
-        return fetchedOrders.map(o => ({
-            id: o.id.toString(),
-            pairId: o.pairId ? o.pairId.toString() : '',
-            market: o.market,
-            type: o.type,
-            localPrice: Number(o.localPrice)
-        }));
+        const dbOrders = db.prepare('SELECT id, pairId, market, type, localPrice, created_at FROM Orders').all() as GaijinOpenOrder[];
+        return dbOrders;
     } catch (err) {
         console.error("[SYNC-ORDERS] Error syncing open orders:", err);
         return db.prepare('SELECT * FROM Orders').all() as GaijinOpenOrder[];

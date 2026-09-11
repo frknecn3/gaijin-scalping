@@ -11,6 +11,13 @@ interface BotSettings {
     dynamicProfitThreshold: number;
     dynamicProfitPercentage: number;
     dynamicMinVolume: number;
+    fallingKnifeProtection: boolean;
+    fallingKnifeDropPercent: number;
+    fallingKnifeMinDelta: number;
+    buyOrderTtlMinutes: number;
+    inventoryHoldTimeoutHours: number;
+    maxItemPrice: number;
+    maxWalletPercentPerItem: number;
 }
 
 interface SettingsModalProps {
@@ -28,7 +35,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         maxItemExposure: 1,
         dynamicProfitThreshold: 1.00,
         dynamicProfitPercentage: 5.0,
-        dynamicMinVolume: 25
+        dynamicMinVolume: 25,
+        fallingKnifeProtection: true,
+        fallingKnifeDropPercent: 8.0,
+        fallingKnifeMinDelta: 0.05,
+        buyOrderTtlMinutes: 15,
+        inventoryHoldTimeoutHours: 2,
+        maxItemPrice: 4.00,
+        maxWalletPercentPerItem: 20.0
     });
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -259,6 +273,109 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                             className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
                                         />
                                         <span className="text-[11px] text-gray-500 block mt-1">Fiyatı dinamik eşiğin üzerindeki pahalı eşyalar için aranan asgari 48 saatlik satış adedi (Örn: 25).</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Section: Risk & Order Lifecycle */}
+                            <div className="bg-[#12161f] p-4 rounded-xl border border-[#262c3b] space-y-4">
+                                <h3 className="text-sm font-semibold uppercase tracking-wider text-rose-400 flex items-center gap-2">
+                                    ⚡ Risk & Emir Yaşam Döngüsü (TTL & Düşen Bıçak)
+                                </h3>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-300 mb-1">
+                                            Düşen Bıçak Koruması
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSettings({ ...settings, fallingKnifeProtection: !settings.fallingKnifeProtection })}
+                                            className={`w-full py-2 px-3 rounded-lg text-sm font-bold transition flex items-center justify-between border ${settings.fallingKnifeProtection
+                                                ? 'bg-rose-500/20 border-rose-500 text-rose-300'
+                                                : 'bg-[#1c222c] border-[#2e3646] text-gray-300'
+                                                }`}
+                                        >
+                                            <span>{settings.fallingKnifeProtection ? 'AÇIK (Trend Koruması)' : 'KAPALI'}</span>
+                                            <span className="text-xs opacity-75">{settings.fallingKnifeProtection ? '🛡️' : '⚪'}</span>
+                                        </button>
+                                        <span className="text-[11px] text-gray-500 block mt-1">Hızlı değer kaybeden eşyalara yeni alım emri girmeyi engeller.</span>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-300 mb-1">
+                                            Düşüş Eşiği (%) / 30 Dk
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.5"
+                                            min="1"
+                                            value={settings.fallingKnifeDropPercent}
+                                            onChange={e => setSettings({ ...settings, fallingKnifeDropPercent: parseFloat(e.target.value) || 8.0 })}
+                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500"
+                                        />
+                                        <span className="text-[11px] text-gray-500 block mt-1">Son 30 dakikada bu oranın üzerinde düşen eşyalar dondurulur (Örn: 8%).</span>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-300 mb-1">
+                                            Alış Emri TTL (Dakika)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="1"
+                                            min="1"
+                                            value={settings.buyOrderTtlMinutes}
+                                            onChange={e => setSettings({ ...settings, buyOrderTtlMinutes: parseInt(e.target.value) || 15 })}
+                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500"
+                                        />
+                                        <span className="text-[11px] text-gray-500 block mt-1">Geçilen ve dolmayan alış emirlerinin iptal edilme süresi (Örn: 15 dk).</span>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-300 mb-1">
+                                            Stok Bekleme & Başabaş (Saat)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.5"
+                                            min="0.5"
+                                            value={settings.inventoryHoldTimeoutHours}
+                                            onChange={e => setSettings({ ...settings, inventoryHoldTimeoutHours: parseFloat(e.target.value) || 2.0 })}
+                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500"
+                                        />
+                                        <span className="text-[11px] text-gray-500 block mt-1">Bu süreden uzun satılmayan eşyalar kârsız başabaşa (0 kâr) indirilerek nakde çevrilir.</span>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-medium text-rose-300 mb-1">
+                                            Max Eşya Fiyatı ($ GJN)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.5"
+                                            min="0.5"
+                                            value={settings.maxItemPrice}
+                                            onChange={e => setSettings({ ...settings, maxItemPrice: parseFloat(e.target.value) || 0 })}
+                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500"
+                                        />
+                                        <span className="text-[11px] text-gray-500 block mt-1">Botun tek bir eşyaya ödeyebileceği tavan fiyat (Örn: 4.00 $).</span>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-medium text-rose-300 mb-1">
+                                            Max Kasa Payı (%) / Eşya
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="1"
+                                            min="1"
+                                            max="100"
+                                            value={settings.maxWalletPercentPerItem}
+                                            onChange={e => setSettings({ ...settings, maxWalletPercentPerItem: parseFloat(e.target.value) || 0 })}
+                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500"
+                                        />
+                                        <span className="text-[11px] text-gray-500 block mt-1">Tek bir eşyanın güncel toplam bakiyenizden alabileceği azami oran (Örn: 20%).</span>
                                     </div>
                                 </div>
                             </div>

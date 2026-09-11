@@ -133,8 +133,48 @@ export async function startRenewOrders(jobState: JobState, isHardRefresh: boolea
                         : avgPrice24h;
                     const salesCount24h = transactions24h.length;
 
-                    // Final hard-check: skip dead volume items, UNLESS it's a brand new item (<= 3 days of history)
-                    if (!isHardRefresh && liquidity.last2Volume === 0 && stat1d.length > 3) return;
+                    // Dynamic Downward Trend Safeguard (Falling Knife Protection)
+                    // Inspect transactions in the last 30 minutes vs baseline (trades 30m-90m ago or 24h avg)
+                    const thirtyMinInSeconds = 30 * 60;
+                    const ninetyMinInSeconds = 90 * 60;
+                    const recentTrades30m = stat1h.filter((d: any) => (nowInSeconds - d[0]) <= thirtyMinInSeconds);
+                    const baselineTrades = stat1h.filter((d: any) => {
+                        const age = nowInSeconds - d[0];
+                        return age > thirtyMinInSeconds && age <= ninetyMinInSeconds;
+                    });
+
+                    let isFallingKnife = false;
+                    let priceDrop30mPercent = 0;
+                    let priceDrop30mDelta = 0;
+
+                    if (recentTrades30m.length > 0) {
+                        const latestTradePrice = recentTrades30m[recentTrades30m.length - 1][1] / 10000;
+                        let referencePrice = 0;
+
+                        if (baselineTrades.length > 0) {
+                            const sum = baselineTrades.reduce((acc: number, d: any) => acc + (d[1] / 10000), 0);
+                            referencePrice = sum / baselineTrades.length;
+                        } else if (avgPrice24h > 0) {
+                            referencePrice = avgPrice24h;
+                        }
+
+                        if (referencePrice > 0 && latestTradePrice < referencePrice) {
+                            priceDrop30mDelta = referencePrice - latestTradePrice;
+                            priceDrop30mPercent = (priceDrop30mDelta / referencePrice) * 100;
+
+                            const settings = getBotSettings();
+                            if (
+                                settings.fallingKnifeProtection &&
+                                priceDrop30mPercent >= settings.fallingKnifeDropPercent &&
+                                priceDrop30mDelta >= settings.fallingKnifeMinDelta
+                            ) {
+                                isFallingKnife = true;
+                            }
+                        }
+                    }
+
+                    // Final hard-check: skip dead volume items unconditionally
+                    if (!isHardRefresh && liquidity.last2Volume === 0) return;
 
                     enrichedItems.push({
                         ...item,
@@ -142,7 +182,10 @@ export async function startRenewOrders(jobState: JobState, isHardRefresh: boolea
                         highestOfLast10,
                         avgPrice24h,
                         highestOfLast24h,
-                        salesCount24h
+                        salesCount24h,
+                        isFallingKnife,
+                        priceDrop30mPercent,
+                        priceDrop30mDelta
                     });
                 } catch (err) {
                     console.log("HATA:", item.name);

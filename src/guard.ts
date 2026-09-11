@@ -96,11 +96,43 @@ const checkStandingOrders = async () => {
             console.log("unnecessarily high? ", unnecessarilyHighBuy)
             console.log(item.localPrice / 10000, trueHighestCompetitorBuy)
 
-            const unprofitable = lowestSell * 0.85 - highestBid < MIN_PROFIT
-
-            console.log("profit ölçer:", lowestSell * 0.85, highestBid, unprofitable)
+            const unprofitable = lowestSell * 0.85 - highestBid < MIN_PROFIT;
 
             if (unprofitable) {
+                // If the market price dropped and this buy order is no longer profitable:
+                // CANCEL IT IMMEDIATELY to prevent getting dumped on by a falling knife!
+                console.warn(`[GUARD] Cancelling UNPROFITABLE BUY order for ${item.market} (Spread: ${(lowestSell * 0.85 - highestBid).toFixed(3)} < ${MIN_PROFIT}).`);
+                recordCancelled(item.id);
+                const idx = activeOrdersTracker.findIndex(o => o.id === item.id);
+                if (idx !== -1) activeOrdersTracker.splice(idx, 1);
+
+                await marketPost({
+                    action: "cancel_order",
+                    pairId: item.pairId,
+                    orderId: item.id,
+                    token
+                });
+                continue;
+            }
+
+            // Check Buy Order TTL:
+            // If our buy order is outbid (userBid < highestBid) and has been sitting for > buyOrderTtlMinutes
+            const orderCreatedAt = item.created_at ? new Date(item.created_at + 'Z').getTime() : Date.now();
+            const orderAgeMinutes = (Date.now() - orderCreatedAt) / (60 * 1000);
+            const isBuyTtlExpired = (userBid < highestBid) && (orderAgeMinutes >= settings.buyOrderTtlMinutes);
+
+            if (isBuyTtlExpired) {
+                console.warn(`[GUARD] Cancelling TTL-EXPIRED BUY order for ${item.market} (Age: ${orderAgeMinutes.toFixed(1)}m >= ${settings.buyOrderTtlMinutes}m).`);
+                recordCancelled(item.id);
+                const idx = activeOrdersTracker.findIndex(o => o.id === item.id);
+                if (idx !== -1) activeOrdersTracker.splice(idx, 1);
+
+                await marketPost({
+                    action: "cancel_order",
+                    pairId: item.pairId,
+                    orderId: item.id,
+                    token
+                });
                 continue;
             }
 
@@ -182,8 +214,21 @@ const checkStandingOrders = async () => {
 
             const targetUndercutPrice = trueLowestCompetitorSell - 0.01;
 
+            // Inventory Hold Timeout / Auto-Breakeven check:
+            // Calculate how long this sell order has been active
+            const sellCreatedAt = item.created_at ? new Date(item.created_at + 'Z').getTime() : Date.now();
+            const sellAgeHours = (Date.now() - sellCreatedAt) / (60 * 60 * 1000);
+            const isHoldTimedOut = sellAgeHours >= settings.inventoryHoldTimeoutHours;
+
+            // If held longer than inventoryHoldTimeoutHours, target breakeven (0.00 GJN profit) to recover capital
+            const effectiveMinProfit = isHoldTimedOut ? 0.00 : MIN_PROFIT;
+
+            if (isHoldTimedOut) {
+                console.log(`[SELL-GUARD] ${item.market} listed for ${sellAgeHours.toFixed(1)}h >= ${settings.inventoryHoldTimeoutHours}h. Auto-breakeven active.`);
+            }
+
             const basisUnprofitable = (!IGNORE_ALL_BASIS && !ignoreBasisItems.includes(item.market) && trueBasis !== undefined)
-                ? (targetUndercutPrice * 0.85 - trueBasis < MIN_PROFIT)
+                ? (targetUndercutPrice * 0.85 - trueBasis < effectiveMinProfit)
                 : false;
 
             const unprofitable = basisUnprofitable || targetUndercutPrice <= 0;
@@ -263,7 +308,7 @@ const checkStandingOrders = async () => {
                     seller_should_get: sellerShouldGet(price),
                     agree_stamp: Date.now(),
                     market_name: item.market,
-                    privateMode: false,
+                    privateMode: true,
                 })
 
                 if (res?.response?.error == "WRONG_PRICE") {
@@ -360,7 +405,7 @@ const checkStandingOrders = async () => {
                             seller_should_get: sellerShouldGet(price),
                             agree_stamp: Date.now(),
                             market_name: market,
-                            privateMode: false
+                            privateMode: true
                         });
                     }
                 }

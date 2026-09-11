@@ -35,6 +35,12 @@ export async function scanMarketForOpportunities() {
             continue;
         }
 
+        // DYNAMIC DOWNWARD TREND SAFEGUARD (Falling Knife Protection)
+        if (settings.fallingKnifeProtection && item.isFallingKnife) {
+            console.warn(`[SCANNER] Falling knife detected for ${item.name || item.hash_name} (-${item.priceDrop30mPercent?.toFixed(1)}% / -$${item.priceDrop30mDelta?.toFixed(2)} in 30m). Skipping BUY.`);
+            continue;
+        }
+
         // Tier-specific volume requirement:
         // Items >= dynamicProfitThreshold use dynamicMinVolume, cheaper items use standard minVolume
         const isDynamicTier = (item.buy_price || 0) >= settings.dynamicProfitThreshold;
