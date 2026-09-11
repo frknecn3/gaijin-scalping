@@ -50,10 +50,156 @@ app.get('/api/profits', async (req, res) => {
     try {
         const { syncUserHistory } = await import('./helpers/orderSync.js');
         await syncUserHistory();
-        const rows = db.prepare('SELECT * FROM Profits ORDER BY id DESC LIMIT 50').all();
-        const total = db.prepare('SELECT SUM(profit) as total FROM Profits').get() as { total: number };
-        const today = db.prepare("SELECT SUM(profit) as today FROM Profits WHERE DATE(timestamp, '+3 hours') = DATE('now', '+3 hours')").get() as { today: number };
-        res.status(200).json({ success: true, total: total.total || 0, today: today.today || 0, profits: rows });
+
+        // Optional query filters: limit, day ('today' | 'yesterday' | 'YYYY-MM-DD'), market
+        const limit = req.query.limit ? parseInt(req.query.limit as string) : 0;
+        const dayFilter = req.query.day as string | undefined;
+        const marketFilter = req.query.market as string | undefined;
+
+        let query = `
+            SELECT 
+                id, 
+                market, 
+                ROUND(sellPrice, 4) as sellPrice, 
+                ROUND(sellPrice * 0.85, 4) as netIncome,
+                ROUND(basis, 4) as basis, 
+                ROUND(profit, 4) as profit,
+                CASE 
+                    WHEN basis > 0 THEN ROUND((profit / basis) * 100, 2)
+                    ELSE 0 
+                END as roiPercent,
+                CASE 
+                    WHEN profit > 0.0001 THEN 'WIN'
+                    WHEN profit < -0.0001 THEN 'LOSS'
+                    ELSE 'BREAKEVEN'
+                END as status,
+                timestamp,
+                DATE(timestamp, '+3 hours') as localDate,
+                TIME(timestamp, '+3 hours') as localTime
+            FROM Profits
+        `;
+
+        const params: any[] = [];
+        const conditions: string[] = [];
+
+        if (dayFilter === 'today') {
+            conditions.push("DATE(timestamp, '+3 hours') = DATE('now', '+3 hours')");
+        } else if (dayFilter === 'yesterday') {
+            conditions.push("DATE(timestamp, '+3 hours') = DATE('now', '+3 hours', '-1 day')");
+        } else if (dayFilter && /^\d{4}-\d{2}-\d{2}$/.test(dayFilter)) {
+            conditions.push("DATE(timestamp, '+3 hours') = ?");
+            params.push(dayFilter);
+        }
+
+        if (marketFilter) {
+            conditions.push("market LIKE ?");
+            params.push(`%${marketFilter}%`);
+        }
+
+        if (conditions.length > 0) {
+            query += " WHERE " + conditions.join(" AND ");
+        }
+
+        query += " ORDER BY id DESC";
+
+        if (limit > 0) {
+            query += ` LIMIT ${limit}`;
+        }
+
+        const rows = db.prepare(query).all(...params);
+
+        // Compute Lifetime Totals
+        const lifetime = db.prepare(`
+            SELECT 
+                ROUND(SUM(profit), 4) as totalProfit,
+                ROUND(SUM(sellPrice), 4) as totalVolume,
+                ROUND(SUM(basis), 4) as totalBasis,
+                COUNT(*) as totalDeals,
+                SUM(CASE WHEN profit > 0.0001 THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN profit < -0.0001 THEN 1 ELSE 0 END) as losses,
+                SUM(CASE WHEN ABS(profit) <= 0.0001 THEN 1 ELSE 0 END) as breakeven
+            FROM Profits
+        `).get() as any;
+
+        // Today's total (UTC+3)
+        const todayRow = db.prepare(`
+            SELECT 
+                ROUND(SUM(profit), 4) as profit,
+                ROUND(SUM(sellPrice), 4) as volume,
+                COUNT(*) as count,
+                SUM(CASE WHEN profit > 0.0001 THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN profit < -0.0001 THEN 1 ELSE 0 END) as losses
+            FROM Profits 
+            WHERE DATE(timestamp, '+3 hours') = DATE('now', '+3 hours')
+        `).get() as any;
+
+        // Yesterday's total (UTC+3)
+        const yesterdayRow = db.prepare(`
+            SELECT 
+                ROUND(SUM(profit), 4) as profit,
+                ROUND(SUM(sellPrice), 4) as volume,
+                COUNT(*) as count,
+                SUM(CASE WHEN profit > 0.0001 THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN profit < -0.0001 THEN 1 ELSE 0 END) as losses
+            FROM Profits 
+            WHERE DATE(timestamp, '+3 hours') = DATE('now', '+3 hours', '-1 day')
+        `).get() as any;
+
+        // Daily breakdown summary
+        const dailySummary = db.prepare(`
+            SELECT 
+                DATE(timestamp, '+3 hours') as day,
+                COUNT(*) as trades,
+                ROUND(SUM(profit), 4) as totalProfit,
+                ROUND(SUM(sellPrice), 4) as totalVolume,
+                ROUND(SUM(basis), 4) as totalBasis,
+                SUM(CASE WHEN profit > 0.0001 THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN profit < -0.0001 THEN 1 ELSE 0 END) as losses,
+                SUM(CASE WHEN ABS(profit) <= 0.0001 THEN 1 ELSE 0 END) as breakeven,
+                ROUND((CAST(SUM(CASE WHEN profit > 0.0001 THEN 1 ELSE 0 END) AS REAL) / COUNT(*)) * 100, 1) as winRatePercent
+            FROM Profits 
+            GROUP BY day 
+            ORDER BY day DESC
+        `).all();
+
+        const totalDeals = lifetime?.totalDeals || 0;
+        const totalWins = lifetime?.wins || 0;
+        const winRate = totalDeals > 0 ? Number(((totalWins / totalDeals) * 100).toFixed(1)) : 0;
+
+        res.status(200).json({
+            success: true,
+            total: lifetime?.totalProfit || 0,
+            today: todayRow?.profit || 0,
+            yesterday: yesterdayRow?.profit || 0,
+            stats: {
+                totalDeals,
+                totalVolume: lifetime?.totalVolume || 0,
+                totalBasis: lifetime?.totalBasis || 0,
+                totalProfit: lifetime?.totalProfit || 0,
+                wins: totalWins,
+                losses: lifetime?.losses || 0,
+                breakeven: lifetime?.breakeven || 0,
+                winRatePercent: winRate,
+                today: {
+                    trades: todayRow?.count || 0,
+                    profit: todayRow?.profit || 0,
+                    volume: todayRow?.volume || 0,
+                    wins: todayRow?.wins || 0,
+                    losses: todayRow?.losses || 0
+                },
+                yesterday: {
+                    trades: yesterdayRow?.count || 0,
+                    profit: yesterdayRow?.profit || 0,
+                    volume: yesterdayRow?.volume || 0,
+                    wins: yesterdayRow?.wins || 0,
+                    losses: yesterdayRow?.losses || 0
+                }
+            },
+            dailySummary,
+            count: rows.length,
+            profits: rows,
+            transactions: rows
+        });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e?.message });
     }
