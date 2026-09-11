@@ -111,7 +111,7 @@ const checkStandingOrders = async () => {
                 const idx = activeOrdersTracker.findIndex(o => o.id === item.id);
                 if (idx !== -1) activeOrdersTracker.splice(idx, 1);
 
-                const res1 = await post({
+                const res1 = await marketPost({
                     action: "cancel_order",
                     pairId: item.pairId,
                     orderId: item.id,
@@ -181,14 +181,12 @@ const checkStandingOrders = async () => {
             const trueBasis = availableBases[basisIndex];
 
             const targetUndercutPrice = trueLowestCompetitorSell - 0.01;
-            const marketSpreadProfit = (targetUndercutPrice * 0.85) - highestBid;
-            const marketSpreadUnprofitable = marketSpreadProfit < MIN_PROFIT;
 
             const basisUnprofitable = (!IGNORE_ALL_BASIS && !ignoreBasisItems.includes(item.market) && trueBasis !== undefined)
                 ? (targetUndercutPrice * 0.85 - trueBasis < MIN_PROFIT)
                 : false;
 
-            const unprofitable = marketSpreadUnprofitable || basisUnprofitable;
+            const unprofitable = basisUnprofitable || targetUndercutPrice <= 0;
 
             function extractMarketId(marketName: string): number | null {
                 const row = db.prepare('SELECT asset_id FROM IdMap WHERE market_name = ?').get(marketName) as { asset_id: number } | undefined;
@@ -205,16 +203,12 @@ const checkStandingOrders = async () => {
                 continue;
             };
 
-            if (userBid - lowestSell > 0.50) {
-                continue;
-            }
-
             if (unnecessarilyLowSell || userBid > lowestSell) {
 
                 console.log("işlemi başlat")
 
                 if (!unnecessarilyLowSell && unprofitable) {
-                    console.log(`[SELL-GUARD] ${item.market} undercut kârsız olduğu için yapılmadı. (Market Spread Kâr: ${marketSpreadProfit.toFixed(2)}, Basis: ${trueBasis ?? 'yok'})`);
+                    console.log(`[SELL-GUARD] ${item.market} undercut kârsız olduğu için yapılmadı. (Kâr: ${(targetUndercutPrice * 0.85 - (trueBasis || 0)).toFixed(2)}, Basis: ${trueBasis ?? 'yok'})`);
                     continue;
                 };
 
@@ -222,7 +216,7 @@ const checkStandingOrders = async () => {
                 const idx = activeOrdersTracker.findIndex(o => o.id === item.id);
                 if (idx !== -1) activeOrdersTracker.splice(idx, 1);
 
-                const res1 = await post({
+                const res1 = await marketPost({
                     action: "cancel_order",
                     pairId: item.pairId,
                     orderId: item.id,
@@ -342,16 +336,15 @@ const checkStandingOrders = async () => {
                     const unassignedBaseIndex = activeSellOrdersCount + i;
                     const basis = availableBases[unassignedBaseIndex];
                     const targetPrice = lowestSell - 0.01;
-                    const marketSpreadProfit = targetPrice * 0.85 - highestBid;
+                    if (targetPrice <= 0) continue;
 
-                    const marketSpreadOk = marketSpreadProfit >= MIN_PROFIT;
                     const basisOk = (IGNORE_ALL_BASIS || ignoreBasisItems.includes(market) || basis === undefined)
                         ? true
                         : (targetPrice * 0.85 - basis >= MIN_PROFIT);
 
-                    if (marketSpreadOk && basisOk) {
+                    if (basisOk) {
                         const assetId = idleItems[i].assetId;
-                        console.log(`[Auto-Lister] Listing ${market} from inventory! Target Price: ${targetPrice.toFixed(2)}, Market Spread Profit: ${marketSpreadProfit.toFixed(2)}, Basis: ${basis ?? 'yok'}`);
+                        console.log(`[Auto-Lister] Listing ${market} from inventory! Target Price: ${targetPrice.toFixed(2)}, Basis: ${basis ?? 'yok'}`);
                         const price = Math.round(targetPrice * 10000);
                         await post({
                             action: "cln_market_sell",

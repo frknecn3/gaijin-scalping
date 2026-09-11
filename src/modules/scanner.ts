@@ -1,6 +1,6 @@
 import db from '../db/database.js';
 import { canBuyItem, acquireBuyLock, releaseBuyLock, isBuyLocked } from './riskManager.js';
-import { post, getPairStat, calculateLiquidityScore } from '../helpers/helpers.js';
+import { post, marketPost, getPairStat, calculateLiquidityScore } from '../helpers/helpers.js';
 import { syncOpenOrders } from '../helpers/orderSync.js';
 import { getBotSettings } from '../helpers/settingsManager.js';
 import dotenv from 'dotenv';
@@ -252,7 +252,7 @@ async function attemptBudgetReallocation(newMarketName: string, newPrice: number
     console.log(`[SCANNER] REALLOCATION TRIGGERED: Cancelling ${worstOrder.market} (Score: ${worstOrder.score.toFixed(2)}) to afford ${newMarketName} (Score: ${newScore.toFixed(2)})`);
 
     // Cancel the order via API
-    const res = await post({
+    const res = await marketPost({
         action: "cancel_order",
         pairId: worstOrder.pairId,
         orderId: worstOrder.id,
