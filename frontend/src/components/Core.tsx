@@ -1,6 +1,6 @@
 import axios from 'axios';
 import React, { useEffect, useMemo, useState } from 'react'
-import type { HashType } from '../utils/types';
+import type { HashType, TransactionType } from '../utils/types';
 import ItemCard from './ItemCard';
 import SettingsModal from './SettingsModal';
 
@@ -17,7 +17,10 @@ const Core = (props: Props) => {
   const [isRenewingOrders, setIsRenewingOrders] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   const [category, setCategory] = useState('')
-  const [totals, setTotals] = useState<{buy: number, sell: number, profit?: number, todayProfit?: number}>({buy: 0, sell: 0, profit: 0, todayProfit: 0});
+  const [totals, setTotals] = useState<{buy: number, sell: number, profit?: number, todayProfit?: number, walletBalance?: number}>({buy: 0, sell: 0, profit: 0, todayProfit: 0, walletBalance: 0});
+  const [recentTransactions, setRecentTransactions] = useState<TransactionType[]>([]);
+  const [txCount, setTxCount] = useState<number>(5);
+  const [showTransactions, setShowTransactions] = useState<boolean>(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [lastUpdated, setLastUpdated] = useState<string>('');
   const [showUpdatedBadge, setShowUpdatedBadge] = useState<boolean>(false);
@@ -29,7 +32,10 @@ const Core = (props: Props) => {
     axios.get(`/orders?${catQuery}_t=${Date.now()}`)
       .then(res => {
         console.log(res);
-        setTotals(res.data.totals || {buy: 0, sell: 0});
+        setTotals(res.data.totals || {buy: 0, sell: 0, walletBalance: 0});
+        if (res.data.recentTransactions) {
+          setRecentTransactions(res.data.recentTransactions);
+        }
         setItems(res.data.data
           .filter((item: HashType) => !item?.tags?.includes('type:key'))
           .sort((a: HashType, b: HashType) => b.last2Volume - a.last2Volume));
@@ -203,6 +209,16 @@ const Core = (props: Props) => {
             <span className="text-red-400 font-semibold" title="Total active SELL orders (x0.85)">SELL: {totals.sell.toFixed(2)} GJN</span>
             <span className="text-white font-bold ml-2">TOTAL: {(totals.buy + totals.sell).toFixed(2)} GJN</span>
           </div>
+
+          <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-700/70 text-xs">
+            <span className="text-gray-400 font-bold uppercase flex items-center gap-1.5" title="Gaijin hesabındaki anlık nakit bakiye">
+              <span>🏦</span> Cash in Bank:
+            </span>
+            <span className="text-emerald-400 font-extrabold text-sm tracking-wide">
+              {(totals.walletBalance ?? 0).toFixed(2)} GJN
+            </span>
+          </div>
+
           <div className="text-xs text-gray-400 font-bold uppercase mt-2 mb-1 flex items-center justify-between">
             <span>Realized Profit</span>
             {lastUpdated && (
@@ -236,6 +252,142 @@ const Core = (props: Props) => {
           ✓ Veriler başarıyla yenilendi ({lastUpdated}) — {filteredItems.length} ürün listeleniyor
         </div>
       )}
+
+      {/* Latest Transactions Section */}
+      <div className="mx-auto max-w-[90vw] mt-6">
+        <div className="bg-gray-850/80 border border-gray-700/80 rounded-2xl shadow-xl overflow-hidden backdrop-blur-md bg-[#161c28]">
+          <div className="flex flex-wrap items-center justify-between px-5 py-3.5 bg-gray-800/80 border-b border-gray-700 gap-3">
+            <div className="flex items-center gap-3">
+              <span className="text-xl">🧾</span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-gray-200 tracking-wide uppercase">
+                    Son İşlemler / Latest Transactions
+                  </h3>
+                  <span className="bg-blue-500/20 text-blue-400 border border-blue-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                    {recentTransactions.length} kayıt
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-400">
+                  Son satılan eşyalar, alış ve satış fiyatları ile gerçekleşen net kâr
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="inline-flex bg-gray-900/90 rounded-lg p-0.5 border border-gray-700">
+                <button
+                  type="button"
+                  onClick={() => setTxCount(5)}
+                  className={`px-3 py-1 rounded-md text-xs font-bold transition ${
+                    txCount === 5
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Son 5
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTxCount(10)}
+                  className={`px-3 py-1 rounded-md text-xs font-bold transition ${
+                    txCount === 10
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Son 10
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowTransactions(!showTransactions)}
+                className="text-gray-400 hover:text-white px-2 py-1 rounded border border-gray-700/60 bg-gray-800/60 transition text-xs font-semibold"
+                title={showTransactions ? "Listeyi Gizle" : "Listeyi Göster"}
+              >
+                {showTransactions ? "▲ Gizle" : "▼ Göster"}
+              </button>
+            </div>
+          </div>
+
+          {showTransactions && (
+            <div className="overflow-x-auto">
+              {recentTransactions.length === 0 ? (
+                <div className="py-8 text-center text-sm text-gray-400">
+                  Henüz kaydedilmiş satış işlemi bulunmuyor.
+                </div>
+              ) : (
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-gray-800 bg-gray-900/60 text-gray-400 font-semibold uppercase tracking-wider">
+                      <th className="py-2.5 px-4">Eşya</th>
+                      <th className="py-2.5 px-3">Alış (Maliyet)</th>
+                      <th className="py-2.5 px-3">Satış (Brüt)</th>
+                      <th className="py-2.5 px-3">Net Gelir (-15%)</th>
+                      <th className="py-2.5 px-3">Net Kâr</th>
+                      <th className="py-2.5 px-4 text-right">Tarih / Saat</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800/60">
+                    {recentTransactions.slice(0, txCount).map((tx) => {
+                      const isProfit = tx.profit >= 0;
+                      return (
+                        <tr key={tx.id} className="hover:bg-gray-800/40 transition">
+                          <td className="py-2.5 px-4 flex items-center gap-3">
+                            {tx.icon ? (
+                              <img
+                                src={tx.icon}
+                                alt={tx.name || tx.market}
+                                className="w-10 h-8 object-cover rounded bg-black/60 border border-gray-700 flex-shrink-0"
+                              />
+                            ) : (
+                              <div className="w-10 h-8 rounded bg-gray-800 border border-gray-700 flex items-center justify-center text-xs text-gray-500 flex-shrink-0">
+                                📦
+                              </div>
+                            )}
+                            <div className="truncate max-w-[260px] sm:max-w-xs md:max-w-md">
+                              <div className="font-semibold text-gray-200 truncate" title={tx.name || tx.market}>
+                                {tx.name || tx.market}
+                              </div>
+                              <div className="text-[10px] text-gray-500 font-mono truncate">
+                                {tx.market}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3 font-mono font-medium text-blue-400 whitespace-nowrap">
+                            {tx.basis ? `${tx.basis.toFixed(2)} GJN` : 'Bilinmiyor'}
+                          </td>
+                          <td className="py-2.5 px-3 font-mono font-medium text-red-400 whitespace-nowrap">
+                            {tx.sellPrice.toFixed(2)} GJN
+                          </td>
+                          <td className="py-2.5 px-3 font-mono text-gray-300 whitespace-nowrap">
+                            {tx.netIncome ? `${tx.netIncome.toFixed(2)} GJN` : `${(tx.sellPrice * 0.85).toFixed(2)} GJN`}
+                          </td>
+                          <td className="py-2.5 px-3 font-mono whitespace-nowrap">
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-black ${
+                                isProfit
+                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                                  : 'bg-red-500/20 text-red-400 border border-red-500/40'
+                              }`}
+                            >
+                              {isProfit ? `+${tx.profit.toFixed(2)}` : tx.profit.toFixed(2)} GJN
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-4 font-mono text-right text-gray-400 text-[11px] whitespace-nowrap">
+                            {tx.dateStr ? `${tx.dateStr} ${tx.timeStr}` : tx.timestamp}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
 
       <div>
         <div className="grid gap-[40px] md:gap-[20px] grid-cols-[repeat(auto-fit,minmax(250px,1fr))] py-10 px-[5vw]">

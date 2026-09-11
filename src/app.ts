@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import dotenv from 'dotenv';
-import { post, marketPost, waitForAssetIdByMarketId, sellerShouldGet } from './helpers/helpers.js';
+import { post, marketPost, waitForAssetIdByMarketId, sellerShouldGet, getWalletBalance } from './helpers/helpers.js';
 import express, { json } from 'express';
 import cors from 'cors';
 import { startRenewOrders } from './helpers/renewOrders.js';
@@ -551,6 +551,42 @@ app.get('/orders', async (req, res) => {
     const todayProfitQuery = db.prepare("SELECT SUM(profit) as today FROM Profits WHERE DATE(timestamp, '+3 hours') = DATE('now', '+3 hours')").get() as { today: number };
     const todayProfit = todayProfitQuery.today || 0;
 
+    const walletBalance = await getWalletBalance();
+
+    const rawTxs = db.prepare(`
+        SELECT 
+            p.id,
+            p.market,
+            ROUND(p.sellPrice, 2) as sellPrice,
+            ROUND(p.sellPrice * 0.85, 2) as netIncome,
+            ROUND(p.basis, 2) as basis,
+            ROUND(p.profit, 2) as profit,
+            p.timestamp,
+            TIME(p.timestamp, '+3 hours') as timeStr,
+            DATE(p.timestamp, '+3 hours') as dateStr
+        FROM Profits p
+        ORDER BY p.id DESC
+        LIMIT 10
+    `).all() as any[];
+
+    const recentTransactions = rawTxs.map(t => {
+        const itemRow = db.prepare('SELECT data FROM Items WHERE hash_name = ?').get(t.market) as { data: string } | undefined;
+        let displayName = t.market;
+        let icon: string | undefined;
+        if (itemRow?.data) {
+            try {
+                const parsed = JSON.parse(itemRow.data);
+                displayName = parsed.name || displayName;
+                icon = parsed.icon;
+            } catch {}
+        }
+        return {
+            ...t,
+            name: displayName,
+            icon
+        };
+    });
+
     res.status(200).send({
         success: true,
         data: items,
@@ -559,8 +595,10 @@ app.get('/orders', async (req, res) => {
             buy: totalBuy,
             sell: totalSell,
             profit: totalProfit,
-            todayProfit: todayProfit
+            todayProfit: todayProfit,
+            walletBalance: walletBalance ?? 0
         },
+        recentTransactions,
         message: "Ürünler gönderildi."
     });
 });
