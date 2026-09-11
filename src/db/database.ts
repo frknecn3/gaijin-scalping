@@ -54,7 +54,7 @@ db.exec(`
   );
 
   CREATE TABLE IF NOT EXISTS CancelledOrders (
-    id INTEGER PRIMARY KEY,
+    id TEXT PRIMARY KEY,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -83,5 +83,23 @@ db.exec(`
 try {
   db.exec('ALTER TABLE Orders ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP');
 } catch {}
+
+try {
+  const tableInfo = db.prepare('PRAGMA table_info(CancelledOrders)').all() as any[];
+  const idCol = tableInfo.find(c => c.name === 'id');
+  if (idCol && idCol.type === 'INTEGER') {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS CancelledOrders_new (
+        id TEXT PRIMARY KEY,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT OR IGNORE INTO CancelledOrders_new SELECT CAST(id AS TEXT), timestamp FROM CancelledOrders;
+      DROP TABLE CancelledOrders;
+      ALTER TABLE CancelledOrders_new RENAME TO CancelledOrders;
+    `);
+  }
+} catch (e) {
+  console.error("Migration error CancelledOrders:", e);
+}
 
 export default db;

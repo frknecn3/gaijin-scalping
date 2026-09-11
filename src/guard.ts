@@ -17,13 +17,21 @@ const token = process.env.TOKEN;
 let standingOrders: any[] = [];
 const ignore: string[] = [];
 const ignoreBasisItems: string[] = []; // Items in this list will be sold regardless of profitability
-function isCancelled(orderId: number): boolean {
-    const row = db.prepare('SELECT id FROM CancelledOrders WHERE id = ?').get(orderId);
-    return !!row;
+function isCancelled(orderId: number | string): boolean {
+    try {
+        const row = db.prepare('SELECT id FROM CancelledOrders WHERE id = ?').get(String(orderId));
+        return !!row;
+    } catch {
+        return false;
+    }
 }
 
-function recordCancelled(orderId: number) {
-    db.prepare('INSERT OR IGNORE INTO CancelledOrders (id) VALUES (?)').run(orderId);
+function recordCancelled(orderId: number | string) {
+    try {
+        db.prepare('INSERT OR IGNORE INTO CancelledOrders (id) VALUES (?)').run(String(orderId));
+    } catch (e) {
+        console.error("[GUARD] Error in recordCancelled:", e);
+    }
 }
 
 function sleep(ms: number) {
@@ -270,11 +278,15 @@ const checkStandingOrders = async () => {
                 continue;
             };
 
-            if (unnecessarilyLowSell || userBid > lowestSell) {
+            const shouldRelist = isLiquidated
+                ? (Math.abs(userBid - targetUndercutPrice) > 0.005 && targetUndercutPrice > 0)
+                : (unnecessarilyLowSell || userBid > lowestSell);
+
+            if (shouldRelist) {
 
                 console.log("işlemi başlat")
 
-                if (!unnecessarilyLowSell && unprofitable) {
+                if (!isLiquidated && !unnecessarilyLowSell && unprofitable) {
                     console.log(`[SELL-GUARD] ${item.market} undercut kârsız olduğu için yapılmadı. (Kâr: ${(targetUndercutPrice * 0.85 - (trueBasis || 0)).toFixed(2)}, Basis: ${trueBasis ?? 'yok'})`);
                     continue;
                 };
