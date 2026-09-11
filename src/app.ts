@@ -420,6 +420,32 @@ async function autoRefreshLoop() {
 autoRefreshLoop();
 startGuardLoop();
 
+// Auto-seed recent trophy items (e.g. WTCS VI) so new items have full metadata
+(async function seedRecentTrophyItems() {
+    try {
+        const row = db.prepare('SELECT hash_name FROM Items WHERE hash_name = ?').get('ugcitem_1002502');
+        if (!row && process.env.TOKEN) {
+            console.log("[ITEMS] Seeding recent WTCS items into Items table...");
+            const res = await post({
+                action: 'cln_market_search',
+                appId: 1067,
+                count: 100,
+                tags: 'eventName:wtcs_trophy_6',
+                token: process.env.TOKEN
+            });
+            if (res?.response?.assets) {
+                const stmt = db.prepare('INSERT OR REPLACE INTO Items (hash_name, data) VALUES (?, ?)');
+                for (const a of res.response.assets) {
+                    stmt.run(a.hash_name, JSON.stringify(a));
+                }
+                console.log(`[ITEMS] Successfully seeded ${res.response.assets.length} items.`);
+            }
+        }
+    } catch (e) {
+        console.error("[ITEMS] Failed to seed recent trophy items:", e);
+    }
+})();
+
 app.get('/orders', async (req, res) => {
     // 1. Always do a live sync of open orders & trade history from Gaijin!
     const liveOrders = await syncOpenOrders();
@@ -429,15 +455,24 @@ app.get('/orders', async (req, res) => {
     let items = itemsQuery.map(row => JSON.parse(row.data));
 
     if (req.query.category) {
+        const cat = String(req.query.category).toLowerCase();
         items = items.filter((item: any) => {
-            if (item.tags && item.tags.includes(`type:${req.query.category}`))
-                return item;
+            if (!item.tags) return false;
+            return item.tags.includes(`type:${cat}`) || item.tags.includes(`vehicleType:${cat}`);
         });
     }
 
     // 3. Map live active orders & liquidation state to items
     const liquidatedSet = new Set(getLiquidateItems());
     const itemMarketSet = new Set(items.map((i: any) => i.hash_name));
+
+    const findItemInDb = (hashName: string) => {
+        const row = db.prepare('SELECT data FROM Items WHERE hash_name = ?').get(hashName) as { data: string } | undefined;
+        if (row?.data) {
+            try { return JSON.parse(row.data); } catch {}
+        }
+        return null;
+    };
 
     items = items.map((item: any) => {
         return {
@@ -447,23 +482,60 @@ app.get('/orders', async (req, res) => {
         };
     });
 
-    // 4. If there are active orders for items not currently in the filtered Items table,
-    // synthesize an entry so they never disappear or get orphaned in the UI!
+    // 4. Ensure ALL active orders are present in the list with full metadata
     for (const order of liveOrders) {
         if (!itemMarketSet.has(order.market)) {
             itemMarketSet.add(order.market);
-            items.unshift({
-                hash_name: order.market,
-                name: order.market,
-                price: order.localPrice / 10000,
-                buy_price: order.localPrice / 10000,
-                profit: 0,
-                last2Volume: 0,
-                liquidityScore: 0,
-                tags: [],
-                isLiquidated: liquidatedSet.has(order.market),
-                active_orders: liveOrders.filter((o: any) => o.market === order.market)
-            });
+            const dbItem = findItemInDb(order.market);
+            if (dbItem) {
+                items.unshift({
+                    ...dbItem,
+                    isLiquidated: liquidatedSet.has(order.market),
+                    active_orders: liveOrders.filter((o: any) => o.market === order.market)
+                });
+            } else {
+                items.unshift({
+                    hash_name: order.market,
+                    name: order.market,
+                    price: order.localPrice / 10000,
+                    buy_price: order.localPrice / 10000,
+                    profit: 0,
+                    last2Volume: 0,
+                    liquidityScore: 0,
+                    tags: [],
+                    isLiquidated: liquidatedSet.has(order.market),
+                    active_orders: liveOrders.filter((o: any) => o.market === order.market)
+                });
+            }
+        }
+    }
+
+    // 5. Ensure ALL liquidated items are present in the list even if not in liveOrders or category filtered
+    for (const marketName of liquidatedSet) {
+        if (!itemMarketSet.has(marketName)) {
+            itemMarketSet.add(marketName);
+            const dbItem = findItemInDb(marketName);
+            const active = liveOrders.filter((o: any) => o.market === marketName);
+            if (dbItem) {
+                items.unshift({
+                    ...dbItem,
+                    isLiquidated: true,
+                    active_orders: active
+                });
+            } else {
+                items.unshift({
+                    hash_name: marketName,
+                    name: marketName,
+                    price: active[0] ? (active[0].localPrice / 10000) : 0,
+                    buy_price: 0,
+                    profit: 0,
+                    last2Volume: 0,
+                    liquidityScore: 0,
+                    tags: [],
+                    isLiquidated: true,
+                    active_orders: active
+                });
+            }
         }
     }
 

@@ -24,7 +24,7 @@ const DEFAULT_SETTINGS: BotSettings = {
     scannerMinProfit: 0.10,
     minStreak: 10,
     minVolume: 50,
-    ignoreAllBasis: true,
+    ignoreAllBasis: false, // Default is strictly false to protect cost basis and prevent losses
     maxItemExposure: 1,
     dynamicProfitThreshold: 1.00,
     dynamicProfitPercentage: 5.0,

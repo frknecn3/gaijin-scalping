@@ -41,29 +41,45 @@ export async function syncUserHistory(): Promise<void> {
     if (!token) return;
 
     try {
-        const json = await post({
-            action: "cln_get_user_history",
-            token,
-            count: 100,
-            skip: 0
-        });
+        const checkProcessed = db.prepare('SELECT id FROM ProcessedEvents WHERE id = ?');
+        const allNewEvents: GaijinHistoryEvent[] = [];
 
-        if (!json?.response?.success || !Array.isArray(json.response.events)) {
-            return;
+        for (let skip = 0; skip < 1000; skip += 100) {
+            const json = await post({
+                action: "cln_get_user_history",
+                token,
+                count: 100,
+                skip
+            });
+
+            if (!json?.response?.success || !Array.isArray(json.response.events) || json.response.events.length === 0) {
+                break;
+            }
+
+            let hitProcessed = false;
+            for (const ev of json.response.events) {
+                if (checkProcessed.get(ev.id)) {
+                    hitProcessed = true;
+                } else {
+                    allNewEvents.push(ev);
+                }
+            }
+
+            if (hitProcessed || json.response.events.length < 100) {
+                break;
+            }
         }
 
-        const events: GaijinHistoryEvent[] = json.response.events;
-        // Sort chronologically ascending so oldest new deals process first
-        events.sort((a, b) => a.ts - b.ts);
+        if (allNewEvents.length === 0) return;
 
-        const checkProcessed = db.prepare('SELECT id FROM ProcessedEvents WHERE id = ?');
+        // Sort chronologically ascending so oldest new deals process first
+        allNewEvents.sort((a, b) => a.ts - b.ts);
+
         const markProcessed = db.prepare('INSERT INTO ProcessedEvents (id) VALUES (?)');
         const insertCancelled = db.prepare('INSERT OR IGNORE INTO CancelledOrders (id) VALUES (?)');
         const insertProfit = db.prepare('INSERT INTO Profits (market, sellPrice, basis, profit) VALUES (@market, @sellPrice, @basis, @profit)');
 
-        for (const ev of events) {
-            const alreadyProcessed = checkProcessed.get(ev.id);
-            if (alreadyProcessed) continue;
+        for (const ev of allNewEvents) {
 
             if (ev.event === "cancel") {
                 insertCancelled.run(ev.orderId);

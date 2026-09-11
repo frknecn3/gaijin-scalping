@@ -257,8 +257,12 @@ const checkStandingOrders = async () => {
                 console.log(`[SELL-GUARD] ${item.market} is in PER-ITEM LIQUIDATION mode. Disregarding basis & profit.`);
             }
 
-            const basisUnprofitable = (!IGNORE_ALL_BASIS && !isLiquidated && !ignoreBasisItems.includes(item.market) && trueBasis !== undefined)
-                ? (targetUndercutPrice * 0.85 - trueBasis < effectiveMinProfit)
+            // CRITICAL SAFEGUARD:
+            // If an item is NOT explicitly in liquidation mode:
+            // 1. If trueBasis is known, check that (netIncome - basis >= effectiveMinProfit).
+            // 2. If trueBasis is UNKNOWN (undefined), REFUSE to undercut to prevent accidental losses on unboxed/external items!
+            const basisUnprofitable = (!isLiquidated)
+                ? (trueBasis !== undefined ? (targetUndercutPrice * 0.85 - trueBasis < effectiveMinProfit) : true)
                 : false;
 
             const unprofitable = basisUnprofitable || targetUndercutPrice <= 0;
@@ -418,9 +422,9 @@ const checkStandingOrders = async () => {
                     if (targetPrice <= 0) continue;
 
                     const isLiquidated = isItemLiquidated(market);
-                    const basisOk = (IGNORE_ALL_BASIS || isLiquidated || ignoreBasisItems.includes(market) || basis === undefined)
+                    const basisOk = isLiquidated
                         ? true
-                        : (targetPrice * 0.85 - basis >= MIN_PROFIT);
+                        : (basis !== undefined && targetPrice * 0.85 - basis >= MIN_PROFIT);
 
                     if (basisOk) {
                         const assetId = idleItems[i].assetId;

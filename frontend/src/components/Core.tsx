@@ -25,7 +25,8 @@ const Core = (props: Props) => {
 
   const getItems = async (): Promise<void> => {
     // Add cache-busting timestamp to prevent browser from caching stale /orders responses
-    axios.get(`/orders?category=${category}&_t=${Date.now()}`)
+    const catQuery = filterLiquidatedOnly ? '' : (category ? `category=${category}&` : '');
+    axios.get(`/orders?${catQuery}_t=${Date.now()}`)
       .then(res => {
         console.log(res);
         setTotals(res.data.totals || {buy: 0, sell: 0});
@@ -45,7 +46,7 @@ const Core = (props: Props) => {
 
 
   useEffect(() => {
-    console.log("cat:", category);
+    console.log("cat:", category, "filterLiquidatedOnly:", filterLiquidatedOnly);
     getItems();
 
     // Auto-sync totals & profits every 10 seconds so profits appear automatically
@@ -54,7 +55,7 @@ const Core = (props: Props) => {
     }, 10000);
 
     return () => clearInterval(pollInterval);
-  }, [category])
+  }, [category, filterLiquidatedOnly])
 
 
   useEffect(() => {
@@ -92,12 +93,17 @@ const Core = (props: Props) => {
 
   const filteredItems = useMemo(() => {
     return items.filter(item => {
-      if (filterLiquidatedOnly && !item.isLiquidated) return false;
+      if (filterLiquidatedOnly) {
+        // When in liquidation filter mode, display ALL liquidated items regardless of volume/profit!
+        return !!item.isLiquidated;
+      }
+      // Never hide active liquidated items from the general list
+      if (item.isLiquidated) return true;
       if (item.last2Volume <= minVolume) return false;
       if (item.profit <= minProfit) return false;
       return true;
     }).sort((a: HashType, b: HashType) => {
-      // Prioritize liquidated items so user can monitor them easily
+      // Prioritize liquidated items so user can monitor them easily at the top
       if (a.isLiquidated && !b.isLiquidated) return -1;
       if (!a.isLiquidated && b.isLiquidated) return 1;
       return b.profit - a.profit;
