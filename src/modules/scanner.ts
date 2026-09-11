@@ -2,7 +2,7 @@ import db from '../db/database.js';
 import { canBuyItem, acquireBuyLock, releaseBuyLock, isBuyLocked } from './riskManager.js';
 import { post, marketPost, getPairStat, calculateLiquidityScore } from '../helpers/helpers.js';
 import { syncOpenOrders } from '../helpers/orderSync.js';
-import { getBotSettings } from '../helpers/settingsManager.js';
+import { getBotSettings, isItemLiquidated } from '../helpers/settingsManager.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -32,6 +32,11 @@ export async function scanMarketForOpportunities() {
 
         // Skip items we are ALREADY buying (open BUY order exists or active buy lock)
         if (currentlyBuying.has(item.hash_name) || isBuyLocked(item.hash_name)) {
+            continue;
+        }
+
+        // Skip items currently marked for LIQUIDATION
+        if (isItemLiquidated(item.hash_name)) {
             continue;
         }
 

@@ -5,7 +5,7 @@ import { marketPost, post, sellerShouldGet, waitForAssetIdByMarketId, getInvAsse
 import { getAvailableBases, addBasis } from "./helpers/basisTracker.js";
 import { syncOpenOrders } from "./helpers/orderSync.js";
 import db from "./db/database.js";
-import { getBotSettings } from "./helpers/settingsManager.js";
+import { getBotSettings, isItemLiquidated } from "./helpers/settingsManager.js";
 dotenv.config();
 
 // ================= CONFIG =================
@@ -90,6 +90,23 @@ const checkStandingOrders = async () => {
 
         if (item.type == "BUY") {
             console.log("BUY:", item.market)
+
+            // Per-Item Liquidation Safeguard:
+            // If item is marked for liquidation, do NOT keep buy orders active! Cancel immediately.
+            if (isItemLiquidated(item.market)) {
+                console.warn(`[GUARD] Cancelling BUY order for ${item.market}: Item is in LIQUIDATION mode.`);
+                recordCancelled(item.id);
+                const idx = activeOrdersTracker.findIndex(o => o.id === item.id);
+                if (idx !== -1) activeOrdersTracker.splice(idx, 1);
+
+                await marketPost({
+                    action: "cancel_order",
+                    pairId: item.pairId,
+                    orderId: item.id,
+                    token
+                });
+                continue;
+            }
 
             const unnecessarilyHighBuy = (item.localPrice / 10000) > (trueHighestCompetitorBuy + 0.01) + 0.005;
 
@@ -227,7 +244,12 @@ const checkStandingOrders = async () => {
                 console.log(`[SELL-GUARD] ${item.market} listed for ${sellAgeHours.toFixed(1)}h >= ${settings.inventoryHoldTimeoutHours}h. Auto-breakeven active.`);
             }
 
-            const basisUnprofitable = (!IGNORE_ALL_BASIS && !ignoreBasisItems.includes(item.market) && trueBasis !== undefined)
+            const isLiquidated = isItemLiquidated(item.market);
+            if (isLiquidated) {
+                console.log(`[SELL-GUARD] ${item.market} is in PER-ITEM LIQUIDATION mode. Disregarding basis & profit.`);
+            }
+
+            const basisUnprofitable = (!IGNORE_ALL_BASIS && !isLiquidated && !ignoreBasisItems.includes(item.market) && trueBasis !== undefined)
                 ? (targetUndercutPrice * 0.85 - trueBasis < effectiveMinProfit)
                 : false;
 
@@ -383,7 +405,8 @@ const checkStandingOrders = async () => {
                     const targetPrice = lowestSell - 0.01;
                     if (targetPrice <= 0) continue;
 
-                    const basisOk = (IGNORE_ALL_BASIS || ignoreBasisItems.includes(market) || basis === undefined)
+                    const isLiquidated = isItemLiquidated(market);
+                    const basisOk = (IGNORE_ALL_BASIS || isLiquidated || ignoreBasisItems.includes(market) || basis === undefined)
                         ? true
                         : (targetPrice * 0.85 - basis >= MIN_PROFIT);
 

@@ -105,3 +105,39 @@ export function updateBotSettings(partial: Partial<BotSettings>): BotSettings {
     console.log("[SETTINGS] Updated bot settings:", updated);
     return updated;
 }
+
+export function isItemLiquidated(marketName: string): boolean {
+    try {
+        const row = db.prepare('SELECT market_name FROM LiquidateItems WHERE market_name = ?').get(marketName);
+        return !!row;
+    } catch {
+        return false;
+    }
+}
+
+export function addLiquidateItem(marketName: string): void {
+    try {
+        db.prepare('INSERT OR IGNORE INTO LiquidateItems (market_name) VALUES (?)').run(marketName);
+        console.log(`[LIQUIDATE] Added ${marketName} to liquidation list.`);
+    } catch (e) {
+        console.error(`[LIQUIDATE] Error adding ${marketName}:`, e);
+    }
+}
+
+export function removeLiquidateItem(marketName: string): void {
+    try {
+        db.prepare('DELETE FROM LiquidateItems WHERE market_name = ?').run(marketName);
+        console.log(`[LIQUIDATE] Removed ${marketName} from liquidation list.`);
+    } catch (e) {
+        console.error(`[LIQUIDATE] Error removing ${marketName}:`, e);
+    }
+}
+
+export function getLiquidateItems(): string[] {
+    try {
+        const rows = db.prepare('SELECT market_name FROM LiquidateItems').all() as { market_name: string }[];
+        return rows.map(r => r.market_name);
+    } catch {
+        return [];
+    }
+}

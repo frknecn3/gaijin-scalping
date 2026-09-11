@@ -21,6 +21,7 @@ const Core = (props: Props) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [lastUpdated, setLastUpdated] = useState<string>('');
   const [showUpdatedBadge, setShowUpdatedBadge] = useState<boolean>(false);
+  const [filterLiquidatedOnly, setFilterLiquidatedOnly] = useState<boolean>(false);
 
   const getItems = async (): Promise<void> => {
     // Add cache-busting timestamp to prevent browser from caching stale /orders responses
@@ -91,11 +92,17 @@ const Core = (props: Props) => {
 
   const filteredItems = useMemo(() => {
     return items.filter(item => {
-      if (item.last2Volume <= minVolume) return false
-      if (item.profit <= minProfit) return false
-      return true
-    }).sort((a: HashType, b: HashType) => b.profit - a.profit)
-  }, [items, minVolume, minProfit])
+      if (filterLiquidatedOnly && !item.isLiquidated) return false;
+      if (item.last2Volume <= minVolume) return false;
+      if (item.profit <= minProfit) return false;
+      return true;
+    }).sort((a: HashType, b: HashType) => {
+      // Prioritize liquidated items so user can monitor them easily
+      if (a.isLiquidated && !b.isLiquidated) return -1;
+      if (!a.isLiquidated && b.isLiquidated) return 1;
+      return b.profit - a.profit;
+    });
+  }, [items, minVolume, minProfit, filterLiquidatedOnly])
 
   return (
     <div className=''>
@@ -165,6 +172,22 @@ const Core = (props: Props) => {
             <option value='ship'>Ship</option>
             <option value='skin'>Skin</option>
           </select>
+        </div>
+
+        <div className='flex flex-col justify-end'>
+          <button
+            type="button"
+            onClick={() => setFilterLiquidatedOnly(!filterLiquidatedOnly)}
+            className={`px-3 py-2.5 rounded-lg font-bold text-xs transition flex items-center gap-1.5 shadow ${
+              filterLiquidatedOnly
+                ? 'bg-red-600 hover:bg-red-500 text-white border-2 border-red-300'
+                : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-600'
+            }`}
+            title="Sadece likidasyona alınmış eşyaları filtreler"
+          >
+            <span>🔥</span>
+            <span>Likidasyon ({items.filter(i => i.isLiquidated).length})</span>
+          </button>
         </div>
 
         <div className="flex flex-col ml-auto bg-gray-800 p-3 rounded-lg border border-gray-700 shadow-md">

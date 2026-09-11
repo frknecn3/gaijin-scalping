@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import dotenv from 'dotenv';
-import { post } from './helpers/helpers.js';
+import { post, marketPost, waitForAssetIdByMarketId, sellerShouldGet } from './helpers/helpers.js';
 import express, { json } from 'express';
 import cors from 'cors';
 import { startRenewOrders } from './helpers/renewOrders.js';
@@ -9,7 +9,7 @@ import { performNightlyAudit } from './modules/audit.js';
 import db from './db/database.js';
 import snipeBuyRouter from "./routers/snipeBuy.route.js";
 import { startGuardLoop } from './guard.js';
-import { getBotSettings, updateBotSettings } from './helpers/settingsManager.js';
+import { getBotSettings, updateBotSettings, isItemLiquidated, addLiquidateItem, removeLiquidateItem, getLiquidateItems } from './helpers/settingsManager.js';
 import { syncOpenOrders } from './helpers/orderSync.js';
 dotenv.config();
 // Node 18+ (native fetch)
@@ -45,6 +45,178 @@ app.post('/settings', (req, res) => {
         res.status(500).json({ success: false, error: e?.message });
     }
 });
+
+app.get('/api/liquidate', (req, res) => {
+    try {
+        const items = getLiquidateItems();
+        res.status(200).json({ success: true, items });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e?.message });
+    }
+});
+
+app.post('/api/liquidate/toggle', (req, res) => {
+    try {
+        const { market } = req.body;
+        if (!market) {
+            return res.status(400).json({ success: false, error: "Market name required" });
+        }
+
+        const currentlyLiquidated = isItemLiquidated(market);
+        if (currentlyLiquidated) {
+            removeLiquidateItem(market);
+            res.status(200).json({
+                success: true,
+                liquidated: false,
+                market,
+                message: `${market} normal moda döndürüldü.`
+            });
+        } else {
+            addLiquidateItem(market);
+            res.status(200).json({
+                success: true,
+                liquidated: true,
+                market,
+                message: `${market} LİKİDASYON moduna alındı! (Guard kârsızlığa bakılmaksızın en ucuz satıcıya undercut atacaktır).`
+            });
+        }
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e?.message });
+    }
+});
+
+app.post('/api/liquidate/dump', async (req, res) => {
+    try {
+        const { market } = req.body;
+        if (!market) {
+            return res.status(400).json({ success: false, error: "Market name required" });
+        }
+
+        const token = process.env.TOKEN;
+        if (!token) {
+            return res.status(500).json({ success: false, error: "TOKEN not configured" });
+        }
+
+        // 1. Check for active orders for this market
+        const liveOrders = await syncOpenOrders();
+
+        // Cancel active BUY orders if any
+        const activeBuys = liveOrders.filter(o => o.market === market && o.type === "BUY");
+        for (const buy of activeBuys) {
+            db.prepare('INSERT OR IGNORE INTO CancelledOrders (id) VALUES (?)').run(buy.id);
+            await marketPost({
+                action: "cancel_order",
+                pairId: buy.pairId,
+                orderId: buy.id,
+                token
+            });
+        }
+
+        // Cancel active SELL order if any so the item returns to inventory
+        const activeSell = liveOrders.find(o => o.market === market && o.type === "SELL");
+        if (activeSell) {
+            console.log(`[DUMP] Cancelling active SELL order ${activeSell.id} for ${market}...`);
+            db.prepare('INSERT OR IGNORE INTO CancelledOrders (id) VALUES (?)').run(activeSell.id);
+            const cancelRes = await marketPost({
+                action: "cancel_order",
+                pairId: activeSell.pairId,
+                orderId: activeSell.id,
+                token
+            });
+            if (!cancelRes?.response?.success) {
+                return res.status(500).json({ success: false, error: "Mevcut satış emri iptal edilemedi, işlem durduruldu." });
+            }
+            // Allow Gaijin inventory a moment to release the asset
+            await new Promise(r => setTimeout(r, 1200));
+        }
+
+        // 2. Resolve normal ID for asset lookup
+        const row = db.prepare('SELECT asset_id FROM IdMap WHERE market_name = ?').get(market) as { asset_id: number } | undefined;
+        let normalID = row?.asset_id;
+        if (!normalID) {
+            const match = market.match(/(?:^id|^ugcitem_)(\d+)/);
+            if (match) normalID = Number(match[1]);
+        }
+
+        if (!normalID) {
+            return res.status(400).json({ success: false, error: `Bu ürün için market/asset ID (${market}) tespit edilemedi.` });
+        }
+
+        // 3. Find asset in inventory
+        console.log(`[DUMP] Waiting for asset ID in inventory for normalID: ${normalID}...`);
+        const assetId = await waitForAssetIdByMarketId(normalID, 15000);
+        if (!assetId) {
+            return res.status(400).json({ success: false, error: `Envanterde satılacak eşya (${market}) bulunamadı. Lütfen birkaç saniye sonra tekrar deneyin.` });
+        }
+
+        // 4. Fetch live order book to get the highest BUY bid
+        const marketBooks = await post({
+            action: "cln_books_brief",
+            market_name: market,
+            appid: 1067,
+            token
+        });
+
+        const highestBidRaw = marketBooks?.response?.BUY?.[0]?.[0];
+        if (!highestBidRaw || highestBidRaw <= 0) {
+            return res.status(400).json({ success: false, error: `Tahtada bu eşyayı alacak hiçbir aktif BUY emri (alış teklifi) bulunmuyor.` });
+        }
+
+        const sellPrice = highestBidRaw;
+        console.log(`[DUMP] Dumping ${market} at highest BUY bid: ${(sellPrice / 10000).toFixed(2)} GJN directly into buyer!`);
+
+        // 5. Sell directly into highest BUY bid
+        const sellRes = await post({
+            action: "cln_market_sell",
+            token: process.env.SELLTOKEN || token,
+            transactid: Math.round(Math.random() * 100000),
+            reqstamp: Date.now(),
+            appid: 1067,
+            contextid: 1,
+            assetid: assetId,
+            amount: 1,
+            currencyid: "gjn",
+            price: sellPrice,
+            seller_should_get: sellerShouldGet(sellPrice),
+            agree_stamp: Date.now(),
+            market_name: market,
+            privateMode: true
+        });
+
+        if (!sellRes?.response?.success) {
+            return res.status(500).json({
+                success: false,
+                error: sellRes?.response?.error || "Gaijin market satışı başarısız oldu",
+                details: sellRes
+            });
+        }
+
+        // Remove from liquidation list since it's now sold/dumped
+        removeLiquidateItem(market);
+
+        // Re-sync user history and open orders
+        try {
+            const { syncUserHistory } = await import('./helpers/orderSync.js');
+            await syncUserHistory();
+            await syncOpenOrders();
+        } catch {}
+
+        const grossPrice = sellPrice / 10000;
+        const netIncome = (sellPrice * 0.85) / 10000;
+
+        res.status(200).json({
+            success: true,
+            market,
+            sellPrice: grossPrice,
+            netIncome,
+            message: `${market} başarıyla ${grossPrice.toFixed(2)} GJN fiyatına anında nakde çevrildi! (Net hesabınıza geçen: +${netIncome.toFixed(2)} GJN)`
+        });
+    } catch (err: any) {
+        console.error("[LIQUIDATE-DUMP] Error:", err);
+        res.status(500).json({ success: false, error: err?.message || "Bilinmeyen bir hata oluştu" });
+    }
+});
+
 
 app.get('/api/profits', async (req, res) => {
     try {
@@ -263,12 +435,14 @@ app.get('/orders', async (req, res) => {
         });
     }
 
-    // 3. Map live active orders to items
+    // 3. Map live active orders & liquidation state to items
+    const liquidatedSet = new Set(getLiquidateItems());
     const itemMarketSet = new Set(items.map((i: any) => i.hash_name));
 
     items = items.map((item: any) => {
         return {
             ...item,
+            isLiquidated: liquidatedSet.has(item.hash_name),
             active_orders: liveOrders.filter((o: any) => o.market === item.hash_name)
         };
     });
@@ -287,6 +461,7 @@ app.get('/orders', async (req, res) => {
                 last2Volume: 0,
                 liquidityScore: 0,
                 tags: [],
+                isLiquidated: liquidatedSet.has(order.market),
                 active_orders: liveOrders.filter((o: any) => o.market === order.market)
             });
         }
@@ -307,6 +482,7 @@ app.get('/orders', async (req, res) => {
     res.status(200).send({
         success: true,
         data: items,
+        liquidatedCount: liquidatedSet.size,
         totals: {
             buy: totalBuy,
             sell: totalSell,
