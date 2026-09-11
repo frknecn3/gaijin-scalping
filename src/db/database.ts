@@ -81,8 +81,34 @@ db.exec(`
 
 // Safe migrations for existing databases
 try {
-  db.exec('ALTER TABLE Orders ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP');
-} catch {}
+  const tableInfo = db.prepare('PRAGMA table_info(Orders)').all() as any[];
+  const hasCreatedAt = tableInfo.some(c => c.name === 'created_at');
+  if (!hasCreatedAt) {
+    console.log("[DB] Adding created_at column to Orders table...");
+    try {
+      db.exec('ALTER TABLE Orders ADD COLUMN created_at TEXT');
+      db.exec("UPDATE Orders SET created_at = datetime('now') WHERE created_at IS NULL");
+    } catch {
+      db.exec(`
+        CREATE TABLE Orders_new (
+          id TEXT PRIMARY KEY,
+          pairId TEXT,
+          market TEXT,
+          type TEXT,
+          localPrice INTEGER,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT OR IGNORE INTO Orders_new (id, pairId, market, type, localPrice)
+          SELECT id, pairId, market, type, localPrice FROM Orders;
+        DROP TABLE Orders;
+        ALTER TABLE Orders_new RENAME TO Orders;
+      `);
+    }
+    console.log("[DB] Orders table migration successful.");
+  }
+} catch (e) {
+  console.error("[DB] Migration error on Orders table:", e);
+}
 
 try {
   const tableInfo = db.prepare('PRAGMA table_info(CancelledOrders)').all() as any[];
