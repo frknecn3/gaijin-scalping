@@ -23,6 +23,8 @@ export interface BotSettings {
     queueClearanceThresholdHours: number; // Queue clearance time required to consider queue stuck (default: 24h)
     emergencyDumpMinAgeHours: number;    // Minimum age before emergency dump to buy bid (default: 18h)
     emergencyDumpMaxLossPercent: number; // Maximum allowed loss % in emergency dump (default: 15%)
+    ultraLiquidVolumeThreshold: number;  // 48h volume threshold to classify as ultra-liquid (default: 100)
+    ultraLiquidMaxExposure: number;      // Maximum copies allowed for ultra-liquid items (default: 2)
 }
 
 const DEFAULT_SETTINGS: BotSettings = {
@@ -47,7 +49,9 @@ const DEFAULT_SETTINGS: BotSettings = {
     softStopLossMaxPercent: 5.0,
     queueClearanceThresholdHours: 24.0,
     emergencyDumpMinAgeHours: 18.0,
-    emergencyDumpMaxLossPercent: 15.0
+    emergencyDumpMaxLossPercent: 15.0,
+    ultraLiquidVolumeThreshold: 100,
+    ultraLiquidMaxExposure: 2
 };
 
 export function getBotSettings(): BotSettings {
@@ -85,6 +89,8 @@ export function getBotSettings(): BotSettings {
             queueClearanceThresholdHours: typeof map.queueClearanceThresholdHours === 'number' ? map.queueClearanceThresholdHours : DEFAULT_SETTINGS.queueClearanceThresholdHours,
             emergencyDumpMinAgeHours: typeof map.emergencyDumpMinAgeHours === 'number' ? map.emergencyDumpMinAgeHours : DEFAULT_SETTINGS.emergencyDumpMinAgeHours,
             emergencyDumpMaxLossPercent: typeof map.emergencyDumpMaxLossPercent === 'number' ? map.emergencyDumpMaxLossPercent : DEFAULT_SETTINGS.emergencyDumpMaxLossPercent,
+            ultraLiquidVolumeThreshold: typeof map.ultraLiquidVolumeThreshold === 'number' ? map.ultraLiquidVolumeThreshold : DEFAULT_SETTINGS.ultraLiquidVolumeThreshold,
+            ultraLiquidMaxExposure: typeof map.ultraLiquidMaxExposure === 'number' ? map.ultraLiquidMaxExposure : DEFAULT_SETTINGS.ultraLiquidMaxExposure,
         };
     } catch (e) {
         console.error("[SETTINGS] Error reading settings from DB, using defaults:", e);
@@ -117,6 +123,8 @@ export function updateBotSettings(partial: Partial<BotSettings>): BotSettings {
         queueClearanceThresholdHours: partial.queueClearanceThresholdHours !== undefined ? Number(partial.queueClearanceThresholdHours) : current.queueClearanceThresholdHours,
         emergencyDumpMinAgeHours: partial.emergencyDumpMinAgeHours !== undefined ? Number(partial.emergencyDumpMinAgeHours) : current.emergencyDumpMinAgeHours,
         emergencyDumpMaxLossPercent: partial.emergencyDumpMaxLossPercent !== undefined ? Number(partial.emergencyDumpMaxLossPercent) : current.emergencyDumpMaxLossPercent,
+        ultraLiquidVolumeThreshold: partial.ultraLiquidVolumeThreshold !== undefined ? Number(partial.ultraLiquidVolumeThreshold) : current.ultraLiquidVolumeThreshold,
+        ultraLiquidMaxExposure: partial.ultraLiquidMaxExposure !== undefined ? Number(partial.ultraLiquidMaxExposure) : current.ultraLiquidMaxExposure,
     };
 
     const stmt = db.prepare('INSERT OR REPLACE INTO Settings (key, value) VALUES (?, ?)');

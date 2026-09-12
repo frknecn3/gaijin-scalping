@@ -69,38 +69,50 @@ export async function canBuyItem(marketName: string, estimatedPrice: number): Pr
     // 1. Exposure and Open Order check
     const ordersQuery = db.prepare('SELECT market, type FROM Orders').all() as { market: string, type: string }[];
     
-    let itemExposureCount = 0;
     let hasOpenBuyOrder = false;
 
     for (const order of ordersQuery) {
-        if (order.type === 'BUY') {
-            if (order.market === marketName) {
-                itemExposureCount++;
-                hasOpenBuyOrder = true;
-            }
-        } else if (order.type === 'SELL') {
-            if (order.market === marketName) itemExposureCount++;
+        if (order.type === 'BUY' && order.market === marketName) {
+            hasOpenBuyOrder = true;
+            break;
         }
     }
 
     // STRICT CHECK: If an open BUY order already exists for this item, never place another one!
+    // (Prevents competing with ourselves or multiple buy bids at the same price)
     if (hasOpenBuyOrder) {
         console.warn(`[RISK MANAGER] Blocked buy for ${marketName}: Already buying this item (open BUY order exists).`);
         return { allowed: false, reason: 'already_buying' };
     }
 
-    // Add inventory basis to exposure
-    const basisQuery = db.prepare('SELECT market_name, basis_prices FROM Basis WHERE market_name = ?').get(marketName) as { market_name: string, basis_prices: string } | undefined;
-    if (basisQuery) {
-        const prices: number[] = JSON.parse(basisQuery.basis_prices);
-        itemExposureCount += prices.length;
+    // Determine current inventory owned (unlisted + listed for sale)
+    let ownedCount = 0;
+    const basisQuery = db.prepare('SELECT basis_prices FROM Basis WHERE market_name = ?').get(marketName) as { basis_prices: string } | undefined;
+    if (basisQuery?.basis_prices) {
+        try {
+            const prices = JSON.parse(basisQuery.basis_prices);
+            ownedCount = prices.length;
+        } catch {}
+    } else {
+        ownedCount = ordersQuery.filter(o => o.type === 'SELL' && o.market === marketName).length;
     }
 
-    const settings = getBotSettings();
-    const MAX_ITEM_EXPOSURE = settings.maxItemExposure;
+    // Query 48h volume to check if item qualifies as Ultra-Liquid
+    let itemVolume = 0;
+    try {
+        const itemRow = db.prepare('SELECT data FROM Items WHERE hash_name = ?').get(marketName) as { data: string } | undefined;
+        if (itemRow?.data) {
+            const parsed = JSON.parse(itemRow.data);
+            itemVolume = parsed.last2Volume || 0;
+        }
+    } catch {}
 
-    if (itemExposureCount >= MAX_ITEM_EXPOSURE) {
-        console.warn(`[RISK MANAGER] Blocked buy for ${marketName}: Max exposure limit reached (${itemExposureCount}/${MAX_ITEM_EXPOSURE})`);
+    const settings = getBotSettings();
+    const isUltraLiquid = itemVolume >= settings.ultraLiquidVolumeThreshold;
+    const maxAllowedExposure = isUltraLiquid ? settings.ultraLiquidMaxExposure : settings.maxItemExposure;
+
+    if (ownedCount >= maxAllowedExposure) {
+        console.warn(`[RISK MANAGER] Blocked buy for ${marketName}: Max exposure limit reached (${ownedCount}/${maxAllowedExposure}, Ultra-Liquid: ${isUltraLiquid}, Vol: ${itemVolume})`);
         return { allowed: false, reason: 'max_exposure' };
     }
 

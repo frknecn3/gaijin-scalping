@@ -24,6 +24,8 @@ interface BotSettings {
     queueClearanceThresholdHours: number;
     emergencyDumpMinAgeHours: number;
     emergencyDumpMaxLossPercent: number;
+    ultraLiquidVolumeThreshold: number;
+    ultraLiquidMaxExposure: number;
 }
 
 interface SettingsModalProps {
@@ -54,7 +56,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         softStopLossMaxPercent: 5.0,
         queueClearanceThresholdHours: 24.0,
         emergencyDumpMinAgeHours: 18.0,
-        emergencyDumpMaxLossPercent: 15.0
+        emergencyDumpMaxLossPercent: 15.0,
+        ultraLiquidVolumeThreshold: 100,
+        ultraLiquidMaxExposure: 2
     });
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -228,7 +232,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
 
                                     <div>
                                         <label className="block text-xs font-medium text-gray-300 mb-1">
-                                            Max Exposure / İtem
+                                            Normal Eşyalar Max Stok (Adet)
                                         </label>
                                         <input
                                             type="number"
@@ -238,7 +242,38 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                             onChange={e => setSettings({ ...settings, maxItemExposure: parseInt(e.target.value) || 1 })}
                                             className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
                                         />
-                                        <span className="text-[11px] text-gray-500 block mt-1">Aynı eşyadan aynı anda sahip olunabilecek max adet.</span>
+                                        <span className="text-[11px] text-gray-500 block mt-1">Standart eşyalarda aynı anda elde tutulabilecek max adet (Örn: 1).</span>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-medium text-cyan-400 mb-1">
+                                            Ultra-Likit Eşik Hacmi (48s)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="5"
+                                            min="50"
+                                            value={settings.ultraLiquidVolumeThreshold}
+                                            onChange={e => setSettings({ ...settings, ultraLiquidVolumeThreshold: parseInt(e.target.value) || 100 })}
+                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500"
+                                        />
+                                        <span className="text-[11px] text-gray-500 block mt-1">Ultra likit sayılması için gereken 48 saatlik satış adedi (Örn: 100).</span>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-medium text-cyan-400 mb-1">
+                                            Ultra-Likit Max Stok (Adet)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="1"
+                                            min="1"
+                                            max="5"
+                                            value={settings.ultraLiquidMaxExposure}
+                                            onChange={e => setSettings({ ...settings, ultraLiquidMaxExposure: parseInt(e.target.value) || 2 })}
+                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500"
+                                        />
+                                        <span className="text-[11px] text-gray-500 block mt-1">Esports kupaları gibi 100+ satanlarda aynı anda izin verilen stok (Örn: 2).</span>
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 pt-4 border-t border-[#262c3b]">
