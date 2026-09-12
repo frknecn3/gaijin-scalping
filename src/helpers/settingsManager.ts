@@ -17,6 +17,12 @@ export interface BotSettings {
     inventoryHoldTimeoutHours: number;   // Auto-breakeven threshold for slow inventory (default: 2)
     maxItemPrice: number;                // Absolute maximum price allowed for any purchase (default: 4.00 GJN)
     maxWalletPercentPerItem: number;     // Maximum percentage of wallet allowed for a single item (default: 20%)
+    enableDynamicLiquidation: boolean;   // Enable queue-depth & volume-aware safe liquidation ladder
+    softStopLossMinAgeHours: number;     // Minimum age before soft stop-loss can trigger (default: 6h)
+    softStopLossMaxPercent: number;      // Maximum allowed loss % in soft stop-loss (default: 5%)
+    queueClearanceThresholdHours: number; // Queue clearance time required to consider queue stuck (default: 24h)
+    emergencyDumpMinAgeHours: number;    // Minimum age before emergency dump to buy bid (default: 18h)
+    emergencyDumpMaxLossPercent: number; // Maximum allowed loss % in emergency dump (default: 15%)
 }
 
 const DEFAULT_SETTINGS: BotSettings = {
@@ -35,7 +41,13 @@ const DEFAULT_SETTINGS: BotSettings = {
     buyOrderTtlMinutes: 15,
     inventoryHoldTimeoutHours: 2,
     maxItemPrice: 4.00,
-    maxWalletPercentPerItem: 20.0
+    maxWalletPercentPerItem: 20.0,
+    enableDynamicLiquidation: true,
+    softStopLossMinAgeHours: 6.0,
+    softStopLossMaxPercent: 5.0,
+    queueClearanceThresholdHours: 24.0,
+    emergencyDumpMinAgeHours: 18.0,
+    emergencyDumpMaxLossPercent: 15.0
 };
 
 export function getBotSettings(): BotSettings {
@@ -67,6 +79,12 @@ export function getBotSettings(): BotSettings {
             inventoryHoldTimeoutHours: typeof map.inventoryHoldTimeoutHours === 'number' ? map.inventoryHoldTimeoutHours : DEFAULT_SETTINGS.inventoryHoldTimeoutHours,
             maxItemPrice: typeof map.maxItemPrice === 'number' ? map.maxItemPrice : DEFAULT_SETTINGS.maxItemPrice,
             maxWalletPercentPerItem: typeof map.maxWalletPercentPerItem === 'number' ? map.maxWalletPercentPerItem : DEFAULT_SETTINGS.maxWalletPercentPerItem,
+            enableDynamicLiquidation: typeof map.enableDynamicLiquidation === 'boolean' ? map.enableDynamicLiquidation : DEFAULT_SETTINGS.enableDynamicLiquidation,
+            softStopLossMinAgeHours: typeof map.softStopLossMinAgeHours === 'number' ? map.softStopLossMinAgeHours : DEFAULT_SETTINGS.softStopLossMinAgeHours,
+            softStopLossMaxPercent: typeof map.softStopLossMaxPercent === 'number' ? map.softStopLossMaxPercent : DEFAULT_SETTINGS.softStopLossMaxPercent,
+            queueClearanceThresholdHours: typeof map.queueClearanceThresholdHours === 'number' ? map.queueClearanceThresholdHours : DEFAULT_SETTINGS.queueClearanceThresholdHours,
+            emergencyDumpMinAgeHours: typeof map.emergencyDumpMinAgeHours === 'number' ? map.emergencyDumpMinAgeHours : DEFAULT_SETTINGS.emergencyDumpMinAgeHours,
+            emergencyDumpMaxLossPercent: typeof map.emergencyDumpMaxLossPercent === 'number' ? map.emergencyDumpMaxLossPercent : DEFAULT_SETTINGS.emergencyDumpMaxLossPercent,
         };
     } catch (e) {
         console.error("[SETTINGS] Error reading settings from DB, using defaults:", e);
@@ -93,6 +111,12 @@ export function updateBotSettings(partial: Partial<BotSettings>): BotSettings {
         inventoryHoldTimeoutHours: partial.inventoryHoldTimeoutHours !== undefined ? Number(partial.inventoryHoldTimeoutHours) : current.inventoryHoldTimeoutHours,
         maxItemPrice: partial.maxItemPrice !== undefined ? Number(partial.maxItemPrice) : current.maxItemPrice,
         maxWalletPercentPerItem: partial.maxWalletPercentPerItem !== undefined ? Number(partial.maxWalletPercentPerItem) : current.maxWalletPercentPerItem,
+        enableDynamicLiquidation: partial.enableDynamicLiquidation !== undefined ? Boolean(partial.enableDynamicLiquidation) : current.enableDynamicLiquidation,
+        softStopLossMinAgeHours: partial.softStopLossMinAgeHours !== undefined ? Number(partial.softStopLossMinAgeHours) : current.softStopLossMinAgeHours,
+        softStopLossMaxPercent: partial.softStopLossMaxPercent !== undefined ? Number(partial.softStopLossMaxPercent) : current.softStopLossMaxPercent,
+        queueClearanceThresholdHours: partial.queueClearanceThresholdHours !== undefined ? Number(partial.queueClearanceThresholdHours) : current.queueClearanceThresholdHours,
+        emergencyDumpMinAgeHours: partial.emergencyDumpMinAgeHours !== undefined ? Number(partial.emergencyDumpMinAgeHours) : current.emergencyDumpMinAgeHours,
+        emergencyDumpMaxLossPercent: partial.emergencyDumpMaxLossPercent !== undefined ? Number(partial.emergencyDumpMaxLossPercent) : current.emergencyDumpMaxLossPercent,
     };
 
     const stmt = db.prepare('INSERT OR REPLACE INTO Settings (key, value) VALUES (?, ?)');

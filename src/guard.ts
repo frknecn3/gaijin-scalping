@@ -257,15 +257,86 @@ const checkStandingOrders = async () => {
                 console.log(`[SELL-GUARD] ${item.market} is in PER-ITEM LIQUIDATION mode. Disregarding basis & profit.`);
             }
 
+            // Queue-depth & volume analysis for dynamic safe liquidation
+            let queueAhead = 0;
+            for (const [pStr, amount] of (market.response?.SELL || [])) {
+                const p = pStr / 10000;
+                if (p < userBid - 0.001) {
+                    queueAhead += amount;
+                } else {
+                    break;
+                }
+            }
+
+            let dailyVolume = 10;
+            try {
+                const itemRow = db.prepare('SELECT data FROM Items WHERE hash_name = ?').get(item.market) as { data: string } | undefined;
+                if (itemRow?.data) {
+                    const parsed = JSON.parse(itemRow.data);
+                    if (typeof parsed.last2Volume === 'number') {
+                        dailyVolume = Math.max(parsed.last2Volume / 2, 0.5);
+                    }
+                }
+            } catch {}
+
+            const clearanceTimeHours = (queueAhead / dailyVolume) * 24;
+
+            let isSoftStopLoss = false;
+            let isEmergencyDump = false;
+            let targetSellPrice = targetUndercutPrice;
+
+            // Safe Gradual Escalation Ladder:
+            if (!isLiquidated && settings.enableDynamicLiquidation && trueBasis !== undefined) {
+                const projectedSoftLoss = trueBasis - (targetUndercutPrice * 0.85);
+                const maxAllowedSoftLoss = trueBasis * (settings.softStopLossMaxPercent / 100);
+
+                // Stage 2: Soft Stop-Loss
+                // Criteria: Held >= softStopLossMinAgeHours (6h), queue ahead >= 3 items, clearance >= queueClearanceThresholdHours (24h)
+                // And loss is within softStopLossMaxPercent (5%)
+                if (
+                    sellAgeHours >= settings.softStopLossMinAgeHours &&
+                    queueAhead >= 3 &&
+                    clearanceTimeHours >= settings.queueClearanceThresholdHours &&
+                    targetUndercutPrice > 0 &&
+                    projectedSoftLoss > 0 &&
+                    projectedSoftLoss <= maxAllowedSoftLoss
+                ) {
+                    isSoftStopLoss = true;
+                    targetSellPrice = targetUndercutPrice;
+                    console.log(`[SAFE-STOP-LOSS] ${item.market} eligible for soft stop-loss! Age: ${sellAgeHours.toFixed(1)}h >= ${settings.softStopLossMinAgeHours}h, Queue: ${queueAhead}, Clearance: ${clearanceTimeHours.toFixed(1)}h >= ${settings.queueClearanceThresholdHours}h. Projected loss: ${projectedSoftLoss.toFixed(2)} GJN (${((projectedSoftLoss / trueBasis) * 100).toFixed(1)}% <= ${settings.softStopLossMaxPercent}%). Undercutting to ${targetUndercutPrice.toFixed(2)} GJN.`);
+                }
+
+                // Stage 3: Emergency Dump (Last Resort)
+                // Criteria: Held >= emergencyDumpMinAgeHours (18h), queue ahead >= 4 items, clearance >= 36h,
+                // Soft stop-loss couldn't trigger (e.g. ask price too far crashed or queue completely stuck),
+                // And highest BUY bid gives loss within emergencyDumpMaxLossPercent (15%)
+                const emergencyLoss = trueBasis - (highestBid * 0.85);
+                const maxEmergencyLoss = trueBasis * (settings.emergencyDumpMaxLossPercent / 100);
+
+                if (
+                    !isSoftStopLoss &&
+                    sellAgeHours >= settings.emergencyDumpMinAgeHours &&
+                    queueAhead >= 4 &&
+                    clearanceTimeHours >= 36 &&
+                    highestBid > 0 &&
+                    emergencyLoss > 0 &&
+                    emergencyLoss <= maxEmergencyLoss
+                ) {
+                    isEmergencyDump = true;
+                    targetSellPrice = highestBid;
+                    console.log(`[EMERGENCY-DUMP] ${item.market} triggers emergency dump to highest BUY! Age: ${sellAgeHours.toFixed(1)}h >= ${settings.emergencyDumpMinAgeHours}h, Queue: ${queueAhead}, Clearance: ${clearanceTimeHours.toFixed(1)}h. Highest bid: ${highestBid.toFixed(2)} GJN, Loss: ${emergencyLoss.toFixed(2)} GJN (${((emergencyLoss / trueBasis) * 100).toFixed(1)}% <= ${settings.emergencyDumpMaxLossPercent}%).`);
+                }
+            }
+
             // CRITICAL SAFEGUARD:
-            // If an item is NOT explicitly in liquidation mode:
+            // If an item is NOT in liquidation / stop-loss:
             // 1. If trueBasis is known, check that (netIncome - basis >= effectiveMinProfit).
             // 2. If trueBasis is UNKNOWN (undefined), REFUSE to undercut to prevent accidental losses on unboxed/external items!
-            const basisUnprofitable = (!isLiquidated)
+            const basisUnprofitable = (!isLiquidated && !isSoftStopLoss && !isEmergencyDump)
                 ? (trueBasis !== undefined ? (targetUndercutPrice * 0.85 - trueBasis < effectiveMinProfit) : true)
                 : false;
 
-            const unprofitable = basisUnprofitable || targetUndercutPrice <= 0;
+            const unprofitable = basisUnprofitable || targetSellPrice <= 0;
 
             function extractMarketId(marketName: string): number | null {
                 const row = db.prepare('SELECT asset_id FROM IdMap WHERE market_name = ?').get(marketName) as { asset_id: number } | undefined;
@@ -284,14 +355,18 @@ const checkStandingOrders = async () => {
 
             const shouldRelist = isLiquidated
                 ? (Math.abs(userBid - targetUndercutPrice) > 0.005 && targetUndercutPrice > 0)
+                : isEmergencyDump
+                ? (highestBid > 0 && Math.abs(userBid - highestBid) > 0.005)
+                : isSoftStopLoss
+                ? (targetUndercutPrice > 0 && Math.abs(userBid - targetUndercutPrice) > 0.005)
                 : (unnecessarilyLowSell || userBid > lowestSell);
 
             if (shouldRelist) {
 
                 console.log("işlemi başlat")
 
-                if (!isLiquidated && !unnecessarilyLowSell && unprofitable) {
-                    console.log(`[SELL-GUARD] ${item.market} undercut kârsız olduğu için yapılmadı. (Kâr: ${(targetUndercutPrice * 0.85 - (trueBasis || 0)).toFixed(2)}, Basis: ${trueBasis ?? 'yok'})`);
+                if (!isLiquidated && !isSoftStopLoss && !isEmergencyDump && !unnecessarilyLowSell && unprofitable) {
+                    console.log(`[SELL-GUARD] ${item.market} undercut kârsız olduğu için yapılmadı. (Kâr: ${(targetUndercutPrice * 0.85 - (trueBasis || 0)).toFixed(2)}, Basis: ${trueBasis ?? 'yok'}, Queue: ${queueAhead}, Clearance: ${clearanceTimeHours.toFixed(1)}h, Age: ${sellAgeHours.toFixed(1)}h)`);
                     continue;
                 };
 
@@ -330,7 +405,7 @@ const checkStandingOrders = async () => {
                     market_name: item.market
                 })
 
-                const price = Math.round((trueLowestCompetitorSell - 0.01) * 10000);
+                const price = Math.round(targetSellPrice * 10000);
 
                 const res = await post({
                     action: "cln_market_sell",

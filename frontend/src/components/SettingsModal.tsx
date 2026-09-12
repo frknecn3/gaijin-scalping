@@ -18,6 +18,12 @@ interface BotSettings {
     inventoryHoldTimeoutHours: number;
     maxItemPrice: number;
     maxWalletPercentPerItem: number;
+    enableDynamicLiquidation: boolean;
+    softStopLossMinAgeHours: number;
+    softStopLossMaxPercent: number;
+    queueClearanceThresholdHours: number;
+    emergencyDumpMinAgeHours: number;
+    emergencyDumpMaxLossPercent: number;
 }
 
 interface SettingsModalProps {
@@ -31,7 +37,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         scannerMinProfit: 0.10,
         minStreak: 10,
         minVolume: 50,
-        ignoreAllBasis: true,
+        ignoreAllBasis: false,
         maxItemExposure: 1,
         dynamicProfitThreshold: 1.00,
         dynamicProfitPercentage: 5.0,
@@ -42,7 +48,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         buyOrderTtlMinutes: 15,
         inventoryHoldTimeoutHours: 2,
         maxItemPrice: 4.00,
-        maxWalletPercentPerItem: 20.0
+        maxWalletPercentPerItem: 20.0,
+        enableDynamicLiquidation: true,
+        softStopLossMinAgeHours: 6.0,
+        softStopLossMaxPercent: 5.0,
+        queueClearanceThresholdHours: 24.0,
+        emergencyDumpMinAgeHours: 18.0,
+        emergencyDumpMaxLossPercent: 15.0
     });
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -376,6 +388,113 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                             className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500"
                                         />
                                         <span className="text-[11px] text-gray-500 block mt-1">Tek bir eşyanın güncel toplam bakiyenizden alabileceği azami oran (Örn: 20%).</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Section: Safe Dynamic Liquidation Ladder */}
+                            <div className="bg-[#12161f] p-4 rounded-xl border border-[#262c3b] space-y-4">
+                                <h3 className="text-sm font-semibold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+                                    🛡️ Kademeli Güvenli Likidasyon (Sıra Derinliği & Hacim Odaklı)
+                                </h3>
+                                <p className="text-xs text-gray-400 leading-relaxed">
+                                    Pazar fiyatı gerilediğinde eşyanın sonsuza kadar rafta kilitli kalmasını engeller. Önündeki sıra derinliğini ve satış hızını hesaplayarak sadece satılamayacak duruma gelen eşyalara kademeli ve kontrollü müdahale eder.
+                                </p>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="sm:col-span-2">
+                                        <label className="block text-xs font-medium text-gray-300 mb-1">
+                                            Kademeli Güvenli Likidasyon
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSettings({ ...settings, enableDynamicLiquidation: !settings.enableDynamicLiquidation })}
+                                            className={`w-full py-2 px-3 rounded-lg text-sm font-bold transition flex items-center justify-between border ${settings.enableDynamicLiquidation
+                                                ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
+                                                : 'bg-[#1c222c] border-[#2e3646] text-gray-300'
+                                                }`}
+                                        >
+                                            <span>{settings.enableDynamicLiquidation ? 'AÇIK (Akıllı Sıra Analizi)' : 'KAPALI (Sadece Manuel Likidasyon)'}</span>
+                                            <span className="text-xs opacity-75">{settings.enableDynamicLiquidation ? '🛡️' : '⚪'}</span>
+                                        </button>
+                                        <span className="text-[11px] text-gray-500 block mt-1">Açıkken hantal kalan eşyaları kontrollü adımlarla sırayla eritir.</span>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-medium text-emerald-300 mb-1">
+                                            Yumuşak Zarar Kes Min Süre (Saat)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.5"
+                                            min="1"
+                                            value={settings.softStopLossMinAgeHours}
+                                            onChange={e => setSettings({ ...settings, softStopLossMinAgeHours: parseFloat(e.target.value) || 6.0 })}
+                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                                        />
+                                        <span className="text-[11px] text-gray-500 block mt-1">Eşya en az bu kadar saat satılmamış olmalıdır (Örn: 6 saat).</span>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-medium text-emerald-300 mb-1">
+                                            Yumuşak Zarar Kes Max Kayıp (%)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.5"
+                                            min="1"
+                                            max="20"
+                                            value={settings.softStopLossMaxPercent}
+                                            onChange={e => setSettings({ ...settings, softStopLossMaxPercent: parseFloat(e.target.value) || 5.0 })}
+                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                                        />
+                                        <span className="text-[11px] text-gray-500 block mt-1">Sıranın önüne geçmek için izin verilen azami zarar oranı (Örn: %5).</span>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-300 mb-1">
+                                            Kuyruk Erime Eşiği (Saat)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="1"
+                                            min="4"
+                                            value={settings.queueClearanceThresholdHours}
+                                            onChange={e => setSettings({ ...settings, queueClearanceThresholdHours: parseFloat(e.target.value) || 24.0 })}
+                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                                        />
+                                        <span className="text-[11px] text-gray-500 block mt-1">Öndeki sıranın erimesi bu süreden uzun sürecekse müdahale edilir (Örn: 24 saat).</span>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-medium text-amber-300 mb-1">
+                                            Acil Likidasyon Min Süre (Saat)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="1"
+                                            min="6"
+                                            value={settings.emergencyDumpMinAgeHours}
+                                            onChange={e => setSettings({ ...settings, emergencyDumpMinAgeHours: parseFloat(e.target.value) || 18.0 })}
+                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                                        />
+                                        <span className="text-[11px] text-gray-500 block mt-1">Tamamen tıkanan eşyanın doğrudan BUY tahtasına satılma süresi (Örn: 18 saat).</span>
+                                    </div>
+
+                                    <div className="sm:col-span-2">
+                                        <label className="block text-xs font-medium text-amber-300 mb-1">
+                                            Acil Likidasyon Max Kayıp (%)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.5"
+                                            min="1"
+                                            max="50"
+                                            value={settings.emergencyDumpMaxLossPercent}
+                                            onChange={e => setSettings({ ...settings, emergencyDumpMaxLossPercent: parseFloat(e.target.value) || 15.0 })}
+                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                                        />
+                                        <span className="text-[11px] text-gray-500 block mt-1">BUY teklifine doğrudan satarken kabul edilecek en yüksek zarar tavanı (Örn: %15). Teklif daha düşükse satmaz.</span>
                                     </div>
                                 </div>
                             </div>
