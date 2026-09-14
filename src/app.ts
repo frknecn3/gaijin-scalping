@@ -11,6 +11,7 @@ import snipeBuyRouter from "./routers/snipeBuy.route.js";
 import { startGuardLoop } from './guard.js';
 import { getBotSettings, updateBotSettings, isItemLiquidated, addLiquidateItem, removeLiquidateItem, getLiquidateItems } from './helpers/settingsManager.js';
 import { syncOpenOrders } from './helpers/orderSync.js';
+import { getAvailableBases } from './helpers/basisTracker.js';
 dotenv.config();
 // Node 18+ (native fetch)
 
@@ -217,6 +218,137 @@ app.post('/api/liquidate/dump', async (req, res) => {
     }
 });
 
+app.get('/api/operations', async (req, res) => {
+    try {
+        const liveOrders = await syncOpenOrders();
+        const walletBalance = await getWalletBalance();
+        const liquidatedItems = new Set(getLiquidateItems());
+
+        const itemsQuery = db.prepare('SELECT hash_name, data FROM Items').all() as { hash_name: string, data: string }[];
+        const itemMap = new Map<string, any>();
+        for (const row of itemsQuery) {
+            try {
+                itemMap.set(row.hash_name, JSON.parse(row.data));
+            } catch {}
+        }
+
+        const basisIndexMap: Record<string, number> = {};
+        const sells: any[] = [];
+        const buys: any[] = [];
+
+        let totalPotentialRevenue = 0;
+        let totalCostBasis = 0;
+        let totalPotentialProfit = 0;
+        let knownBasisCount = 0;
+        let committedBuyCapital = 0;
+
+        for (const order of liveOrders) {
+            const itemData = itemMap.get(order.market) || {};
+            const itemName = itemData.name || order.market;
+            const icon = itemData.icon || '';
+            const marketLowestSell = itemData.price || 0;
+            const marketHighestBuy = itemData.buy_price || 0;
+
+            const orderCreatedAt = order.created_at ? new Date(order.created_at + (order.created_at.includes('Z') ? '' : 'Z')).getTime() : Date.now();
+
+            if (order.type === 'SELL') {
+                const listedPrice = order.localPrice / 10000;
+                const netRevenue = listedPrice * 0.85;
+
+                const bIndex = basisIndexMap[order.market] || 0;
+                basisIndexMap[order.market] = bIndex + 1;
+                const availableBases = getAvailableBases(order.market);
+                const basis = availableBases[bIndex] !== undefined ? availableBases[bIndex] : null;
+
+                const potentialProfit = basis !== null ? (netRevenue - basis) : null;
+                const roiPercent = (basis !== null && basis > 0 && potentialProfit !== null) ? Number(((potentialProfit / basis) * 100).toFixed(1)) : null;
+
+                const durationHours = Math.max(0, (Date.now() - orderCreatedAt) / 3600000);
+                const isLiquidated = liquidatedItems.has(order.market);
+                const isLowestSell = marketLowestSell > 0 ? (listedPrice <= marketLowestSell + 0.005) : true;
+
+                totalPotentialRevenue += netRevenue;
+                if (basis !== null) {
+                    totalCostBasis += basis;
+                    totalPotentialProfit += (potentialProfit || 0);
+                    knownBasisCount++;
+                }
+
+                sells.push({
+                    orderId: order.id,
+                    pairId: order.pairId,
+                    market: order.market,
+                    name: itemName,
+                    icon,
+                    listedPrice: Number(listedPrice.toFixed(2)),
+                    netRevenue: Number(netRevenue.toFixed(2)),
+                    basis: basis !== null ? Number(basis.toFixed(2)) : null,
+                    potentialProfit: potentialProfit !== null ? Number(potentialProfit.toFixed(2)) : null,
+                    roiPercent,
+                    marketLowestSell: marketLowestSell > 0 ? Number(marketLowestSell.toFixed(2)) : null,
+                    marketHighestBuy: marketHighestBuy > 0 ? Number(marketHighestBuy.toFixed(2)) : null,
+                    isLowestSell,
+                    durationHours: Number(durationHours.toFixed(1)),
+                    isLiquidated,
+                    status: isLiquidated ? 'LIQUIDATING' : (isLowestSell ? 'WINNING' : 'UNDERCUT')
+                });
+            } else if (order.type === 'BUY') {
+                const bidPrice = order.localPrice / 10000;
+                const durationMinutes = Math.max(0, (Date.now() - orderCreatedAt) / 60000);
+                const isHighestBid = marketHighestBuy > 0 ? (bidPrice >= marketHighestBuy - 0.005) : true;
+
+                const targetSell = marketLowestSell > 0 ? marketLowestSell : (bidPrice * 1.18);
+                const projectedNet = (targetSell * 0.85) - bidPrice;
+                const projectedRoi = bidPrice > 0 ? Number(((projectedNet / bidPrice) * 100).toFixed(1)) : 0;
+
+                committedBuyCapital += bidPrice;
+
+                buys.push({
+                    orderId: order.id,
+                    pairId: order.pairId,
+                    market: order.market,
+                    name: itemName,
+                    icon,
+                    bidPrice: Number(bidPrice.toFixed(2)),
+                    marketHighestBuy: marketHighestBuy > 0 ? Number(marketHighestBuy.toFixed(2)) : null,
+                    marketLowestSell: marketLowestSell > 0 ? Number(marketLowestSell.toFixed(2)) : null,
+                    isHighestBid,
+                    targetSellPrice: Number(targetSell.toFixed(2)),
+                    projectedNetProfit: Number(projectedNet.toFixed(2)),
+                    projectedRoiPercent: projectedRoi,
+                    durationMinutes: Math.round(durationMinutes),
+                    status: isHighestBid ? 'TOP_BID' : 'OUTBID'
+                });
+            }
+        }
+
+        sells.sort((a, b) => (b.potentialProfit ?? -999) - (a.potentialProfit ?? -999));
+        buys.sort((a, b) => b.projectedNetProfit - a.projectedNetProfit);
+
+        const avgRoiPercent = totalCostBasis > 0 ? Number(((totalPotentialProfit / totalCostBasis) * 100).toFixed(1)) : 0;
+
+        res.status(200).json({
+            success: true,
+            summary: {
+                totalSellCount: sells.length,
+                totalBuyCount: buys.length,
+                totalPotentialRevenue: Number(totalPotentialRevenue.toFixed(2)),
+                totalCostBasis: Number(totalCostBasis.toFixed(2)),
+                totalPotentialProfit: Number(totalPotentialProfit.toFixed(2)),
+                avgRoiPercent,
+                knownBasisCount,
+                committedBuyCapital: Number(committedBuyCapital.toFixed(2)),
+                walletBalance: Number((walletBalance ?? 0).toFixed(2)),
+                estimatedPortfolioValue: Number(((walletBalance ?? 0) + committedBuyCapital + totalCostBasis).toFixed(2))
+            },
+            sells,
+            buys
+        });
+    } catch (e: any) {
+        console.error("[OPERATIONS-API] Error:", e);
+        res.status(500).json({ success: false, error: e?.message || "Internal server error" });
+    }
+});
 
 app.get('/api/profits', async (req, res) => {
     try {

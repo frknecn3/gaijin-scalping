@@ -4,7 +4,9 @@ import type { HashType, TransactionType } from '../utils/types';
 import ItemCard from './ItemCard';
 import SettingsModal from './SettingsModal';
 
-type Props = {}
+type Props = {
+  onNavigateToOperations?: () => void;
+}
 
 
 
@@ -243,6 +245,18 @@ const Core = (props: Props) => {
               </span>
             )}
           </div>
+
+          {props.onNavigateToOperations && (
+            <button
+              type="button"
+              onClick={props.onNavigateToOperations}
+              className="mt-2.5 w-full py-2 px-3 bg-gradient-to-r from-indigo-600/30 via-cyan-600/30 to-indigo-600/30 hover:from-indigo-600/50 hover:to-cyan-600/50 border border-cyan-500/40 hover:border-cyan-400 rounded-lg text-xs font-bold text-cyan-300 hover:text-white transition flex items-center justify-center gap-2 shadow-md shadow-indigo-950/40 group active:scale-[0.99]"
+            >
+              <span>💼</span>
+              <span>Aktif İşlemler & Potansiyel Gelirler</span>
+              <span className="group-hover:translate-x-1 transition-transform">→</span>
+            </button>
+          )}
         </div>
 
       </div>

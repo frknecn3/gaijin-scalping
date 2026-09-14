@@ -144,6 +144,22 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         setSettings({ ...settings, scannerTierRules: rules });
     };
 
+    const handleMoveTierRule = (index: number, direction: 'up' | 'down') => {
+        const rules = [...(settings.scannerTierRules || [])];
+        const targetIndex = direction === 'up' ? index - 1 : index + 1;
+        if (targetIndex < 0 || targetIndex >= rules.length) return;
+        const temp = rules[index];
+        rules[index] = rules[targetIndex];
+        rules[targetIndex] = temp;
+        setSettings({ ...settings, scannerTierRules: rules });
+    };
+
+    const handleSortTierRules = () => {
+        const rules = [...(settings.scannerTierRules || [])];
+        rules.sort((a, b) => (a.minPrice || 0) - (b.minPrice || 0));
+        setSettings({ ...settings, scannerTierRules: rules });
+    };
+
     const handleDeleteTierRule = (index: number) => {
         const rules = [...(settings.scannerTierRules || [])];
         rules.splice(index, 1);
@@ -478,14 +494,34 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                                                 </div>
                                                             </td>
                                                             <td className="py-2 px-2 text-right">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handleDeleteTierRule(idx)}
-                                                                    className="p-1 text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 rounded transition"
-                                                                    title="Kademeyi Sil"
-                                                                >
-                                                                    🗑️
-                                                                </button>
+                                                                <div className="flex items-center justify-end gap-1">
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={idx === 0}
+                                                                        onClick={() => handleMoveTierRule(idx, 'up')}
+                                                                        className={`p-1 rounded transition text-xs ${idx === 0 ? 'opacity-20 cursor-not-allowed text-gray-600' : 'text-gray-300 hover:text-white hover:bg-white/10'}`}
+                                                                        title="Yukarı Taşı"
+                                                                    >
+                                                                        ⬆️
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={idx === (settings.scannerTierRules || []).length - 1}
+                                                                        onClick={() => handleMoveTierRule(idx, 'down')}
+                                                                        className={`p-1 rounded transition text-xs ${idx === (settings.scannerTierRules || []).length - 1 ? 'opacity-20 cursor-not-allowed text-gray-600' : 'text-gray-300 hover:text-white hover:bg-white/10'}`}
+                                                                        title="Aşağı Taşı"
+                                                                    >
+                                                                        ⬇️
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleDeleteTierRule(idx)}
+                                                                        className="p-1 text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 rounded transition text-xs ml-1"
+                                                                        title="Kademeyi Sil"
+                                                                    >
+                                                                        🗑️
+                                                                    </button>
+                                                                </div>
                                                             </td>
                                                         </tr>
                                                     ))}
@@ -493,14 +529,24 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                             </table>
                                         </div>
 
-                                        <div className="flex items-center justify-between pt-2">
-                                            <button
-                                                type="button"
-                                                onClick={handleAddTierRule}
-                                                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1 shadow-md shadow-indigo-900/30"
-                                            >
-                                                <span>➕</span> Yeni Kademe Ekle
-                                            </button>
+                                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAddTierRule}
+                                                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1 shadow-md shadow-indigo-900/30"
+                                                >
+                                                    <span>➕</span> Yeni Kademe Ekle
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleSortTierRules}
+                                                    className="px-3 py-1.5 bg-[#1c222c] hover:bg-[#252c39] border border-indigo-500/30 text-indigo-300 rounded-lg text-xs font-medium transition flex items-center gap-1.5 shadow-sm"
+                                                    title="Tüm kademeleri Min Fiyata göre küçükten büyüğe otomatik sıralar"
+                                                >
+                                                    <span>🔢</span> Fiyata Göre Sırala
+                                                </button>
+                                            </div>
                                             <button
                                                 type="button"
                                                 onClick={handleResetTierRules}
