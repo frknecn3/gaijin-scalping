@@ -5,32 +5,51 @@ dotenv.config();
 const token = process.env.TOKEN
 
 export const getInvAssets = async () => {
-    async function assetAPI(body:any) {
-        const res = await fetch("https://market-proxy.gaijin.net/assetAPI", {
-            method: "POST",
-            headers: { "content-type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams(body)
-        });
-        return res.json();
+    async function assetAPI(body: any, retries = 3) {
+        for (let i = 0; i < retries; i++) {
+            try {
+                const res = await fetch("https://market-proxy.gaijin.net/assetAPI", {
+                    method: "POST",
+                    headers: { "content-type": "application/x-www-form-urlencoded" },
+                    body: new URLSearchParams(body)
+                });
+                if (res.status === 429) {
+                    await sleep(Math.pow(2, i) * 1000);
+                    continue;
+                }
+                const text = await res.text();
+                if (!text || text.trim() === "") {
+                    if (i === retries - 1) return null;
+                    await sleep(1000);
+                    continue;
+                }
+                return JSON.parse(text);
+            } catch (err) {
+                if (i === retries - 1) return null;
+                await sleep(Math.pow(2, i) * 1000);
+            }
+        }
+        return null;
     }
 
     const res = await assetAPI({
         action: "GetContextContents",
-        token,
+        token: process.env.TOKEN,
         appid: 1067,
         contextid: 1
-    })
+    });
 
-    let assets = res.result.assets
-    assets = assets.flatMap((a:any) => {
-        return a.class.map((c:any) => ({
+    if (!res?.result?.assets || !Array.isArray(res.result.assets)) {
+        return [];
+    }
+
+    let assets = res.result.assets;
+    assets = assets.flatMap((a: any) => {
+        return (a.class || []).map((c: any) => ({
             assetId: a.id,
             id: c.value
         }));
     });
-
-
-
 
     return assets;
 }
@@ -67,7 +86,7 @@ async function getPairStat(marketName:string) {
 
   if(!process.env.TOKEN) return;
 
-  const body = new URLSearchParams({
+  const json = await post({
     action: "cln_get_pair_stat",
     appid: "1067",
     market_name: marketName,
@@ -75,18 +94,7 @@ async function getPairStat(marketName:string) {
     token: process.env.TOKEN
   });
 
-  const res = await fetch("https://market-proxy.gaijin.net/web", {
-    method: "POST",
-    headers: {
-      "content-type": "application/x-www-form-urlencoded"
-    },
-    body
-  });
-
-  const json = await res.json();
-
-  if (!json.response?.success || !json.response["1d"]) {
-    console.log("Veri alınamadı.", json)
+  if (!json?.response?.success || !json?.response["1d"]) {
     return null;
   }
 
@@ -110,22 +118,46 @@ async function waitForAssetIdByMarketId(normalID:number, timeoutMs = 15000) {
   return null;
 }
 
-async function post(body:any) {
-  const res = await fetch("https://market-proxy.gaijin.net/web", {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(body)
-  });
-  return res.json();
+async function post(body:any, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch("https://market-proxy.gaijin.net/web", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams(body)
+      });
+      if (res.status === 429) {
+        console.warn(`[API] 429 Too Many Requests (post). Retrying in ${Math.pow(2, i)}s...`);
+        await sleep(Math.pow(2, i) * 1000);
+        continue;
+      }
+      return await res.json();
+    } catch (e) {
+      if (i === retries - 1) throw e;
+      await sleep(Math.pow(2, i) * 1000);
+    }
+  }
 }
 
-async function marketPost(body:any) {
-  const res = await fetch("https://market-proxy.gaijin.net/market", {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(body)
-  });
-  return res.json();
+async function marketPost(body:any, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch("https://market-proxy.gaijin.net/market", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams(body)
+      });
+      if (res.status === 429) {
+        console.warn(`[API] 429 Too Many Requests (marketPost). Retrying in ${Math.pow(2, i)}s...`);
+        await sleep(Math.pow(2, i) * 1000);
+        continue;
+      }
+      return await res.json();
+    } catch (e) {
+      if (i === retries - 1) throw e;
+      await sleep(Math.pow(2, i) * 1000);
+    }
+  }
 }
 
 function sellerShouldGet(price:number) {
@@ -139,7 +171,30 @@ function extractMarketId(marketName:string) {
 }
 
 
+async function getWalletBalance(): Promise<number | null> {
+  const token = process.env.TOKEN;
+  if (!token) return null;
+
+  try {
+    const res = await fetch("https://wallet.gaijin.net/GetBalance?", {
+      headers: {
+        "accept": "application/json, text/plain, */*",
+        "authorization": "BEARER " + token,
+        "Referer": "https://trade.gaijin.net/"
+      }
+    });
+    const json = await res.json();
+    if (json.status === "OK" && typeof json.balance === "number") {
+      return json.balance / 10000; // 76500 -> 7.65 GJN
+    }
+    return null;
+  } catch (err) {
+    console.error("[WALLET] Error fetching balance:", err);
+    return null;
+  }
+}
+
 const findItemOrder = (id:number, array:any[]) => {
   return array.find((i) => extractMarketId(i.market) == id)
 }
-export { getPairStat, calculateLiquidityScore, waitForAssetIdByMarketId, post, marketPost, sellerShouldGet, findItemOrder }
+export { getPairStat, calculateLiquidityScore, waitForAssetIdByMarketId, post, marketPost, sellerShouldGet, findItemOrder, getWalletBalance }

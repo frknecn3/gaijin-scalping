@@ -17,5 +17,20 @@ export type HashType = {
   profit: number,
   tags: string[],
   active_orders?: { type: string, localPrice: number, market: string }[],
-  highestOfLast10?: number
+  highestOfLast10?: number,
+  isLiquidated?: boolean
 }
+
+export type TransactionType = {
+  id: number;
+  market: string;
+  name?: string;
+  icon?: string;
+  sellPrice: number;
+  netIncome: number;
+  basis: number;
+  profit: number;
+  timestamp: string;
+  timeStr: string;
+  dateStr: string;
+};

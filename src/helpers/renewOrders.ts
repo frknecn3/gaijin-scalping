@@ -1,4 +1,6 @@
-import { calculateLiquidityScore, getPairStat } from "./helpers.js"
+import { calculateLiquidityScore, getPairStat } from "./helpers.js";
+import db from "../db/database.js";
+import { getBotSettings } from "./settingsManager.js";
 import fs from 'fs';
 
 
@@ -9,7 +11,7 @@ export async function startRenewOrders(jobState: JobState, isHardRefresh: boolea
     jobState.percent = 0
 
     try {
-        let allItems = []
+        let allItems: any[] = [];
         let skip = 0
         const COUNT = 100
 
@@ -62,13 +64,15 @@ export async function startRenewOrders(jobState: JobState, isHardRefresh: boolea
         }
 
         // Save an un-filtered map of market names to IDs so guard.ts never loses track of dead items
-        const idMap: Record<string, number> = {};
-        for (const i of allItems) {
-            const defIdObj = i.asset_class?.find((c: any) => c.name === "__itemdefid");
-            if (defIdObj) idMap[i.hash_name] = Number(defIdObj.value);
-        }
-        await fs.promises.writeFile('./data/id_map.json', JSON.stringify(idMap));
-
+        const insertIdMap = db.prepare('INSERT OR REPLACE INTO IdMap (market_name, asset_id) VALUES (@market_name, @asset_id)');
+        db.transaction(() => {
+            for (const i of allItems) {
+                const defIdObj = i.asset_class?.find((c: any) => c.name === "__itemdefid");
+                if (defIdObj) {
+                    insertIdMap.run({ market_name: i.hash_name, asset_id: Number(defIdObj.value) });
+                }
+            }
+        })();
         allItems = allItems
             .map((item) => {
                 const newPrice = (item.price / 100000000) * 0.85
@@ -119,13 +123,73 @@ export async function startRenewOrders(jobState: JobState, isHardRefresh: boolea
                         ? Math.max(...validRecentTransactions.map((d: any) => d[1] / 10000))
                         : 0;
 
-                    // Final hard-check: skip dead volume items, UNLESS it's a brand new item (<= 3 days of history)
-                    if (!isHardRefresh && liquidity.last2Volume === 0 && stat1d.length > 3) return;
+                    // 24-hour baseline metrics for fair-value verification
+                    const oneDayInSeconds = 24 * 60 * 60;
+                    const transactions24h = stat1h.filter((d: any) => (nowInSeconds - d[0]) <= oneDayInSeconds);
+                    const latest1d = stat1d[stat1d.length - 1];
+                    const avgPrice24h = latest1d && latest1d[1] ? latest1d[1] / 10000 : 0;
+                    const highestOfLast24h = transactions24h.length > 0
+                        ? Math.max(...transactions24h.map((d: any) => d[1] / 10000))
+                        : avgPrice24h;
+                    const lowestOfLast24h = transactions24h.length > 0
+                        ? Math.min(...transactions24h.map((d: any) => d[1] / 10000))
+                        : avgPrice24h;
+                    const salesCount24h = transactions24h.length;
+
+                    // Dynamic Downward Trend Safeguard (Falling Knife Protection)
+                    // Inspect transactions in the last 30 minutes vs baseline (trades 30m-90m ago or 24h avg)
+                    const thirtyMinInSeconds = 30 * 60;
+                    const ninetyMinInSeconds = 90 * 60;
+                    const recentTrades30m = stat1h.filter((d: any) => (nowInSeconds - d[0]) <= thirtyMinInSeconds);
+                    const baselineTrades = stat1h.filter((d: any) => {
+                        const age = nowInSeconds - d[0];
+                        return age > thirtyMinInSeconds && age <= ninetyMinInSeconds;
+                    });
+
+                    let isFallingKnife = false;
+                    let priceDrop30mPercent = 0;
+                    let priceDrop30mDelta = 0;
+
+                    if (recentTrades30m.length > 0) {
+                        const latestTradePrice = recentTrades30m[recentTrades30m.length - 1][1] / 10000;
+                        let referencePrice = 0;
+
+                        if (baselineTrades.length > 0) {
+                            const sum = baselineTrades.reduce((acc: number, d: any) => acc + (d[1] / 10000), 0);
+                            referencePrice = sum / baselineTrades.length;
+                        } else if (avgPrice24h > 0) {
+                            referencePrice = avgPrice24h;
+                        }
+
+                        if (referencePrice > 0 && latestTradePrice < referencePrice) {
+                            priceDrop30mDelta = referencePrice - latestTradePrice;
+                            priceDrop30mPercent = (priceDrop30mDelta / referencePrice) * 100;
+
+                            const settings = getBotSettings();
+                            if (
+                                settings.fallingKnifeProtection &&
+                                priceDrop30mPercent >= settings.fallingKnifeDropPercent &&
+                                priceDrop30mDelta >= settings.fallingKnifeMinDelta
+                            ) {
+                                isFallingKnife = true;
+                            }
+                        }
+                    }
+
+                    // Final hard-check: skip dead volume items unconditionally
+                    if (!isHardRefresh && liquidity.last2Volume === 0) return;
 
                     enrichedItems.push({
                         ...item,
                         ...liquidity,
-                        highestOfLast10
+                        highestOfLast10,
+                        avgPrice24h,
+                        highestOfLast24h,
+                        lowestOfLast24h,
+                        salesCount24h,
+                        isFallingKnife,
+                        priceDrop30mPercent,
+                        priceDrop30mDelta
                     });
                 } catch (err) {
                     console.log("HATA:", item.name);
@@ -139,12 +203,33 @@ export async function startRenewOrders(jobState: JobState, isHardRefresh: boolea
             jobState.percent = Math.round(((Math.min(i + CONCURRENCY, allItems.length)) / allItems.length) * 100);
         }
 
-        const jsonItems = JSON.stringify(
-            enrichedItems.sort((a, b) => a.last2Volume - b.last2Volume)
-        )
+        const sortedItems = enrichedItems.sort((a, b) => a.last2Volume - b.last2Volume);
 
-        // ❗ make async
-        await fs.promises.writeFile('./data/items.json', jsonItems)
+        const insertItem = db.prepare('INSERT OR REPLACE INTO Items (hash_name, data) VALUES (@hash_name, @data)');
+        
+        const getStreak = db.prepare('SELECT streak FROM ItemStreaks WHERE market_name = ?');
+        const updateStreak = db.prepare('INSERT OR REPLACE INTO ItemStreaks (market_name, streak) VALUES (@market_name, @streak)');
+
+        const settings = getBotSettings();
+        const MIN_PROFIT = settings.scannerMinProfit;
+
+        db.transaction(() => {
+            // First clear all existing items so we don't keep stale ones
+            db.prepare('DELETE FROM Items').run();
+            for (const item of sortedItems) {
+                // Determine streak
+                let streak = 0;
+                if (item.profit >= MIN_PROFIT) {
+                    const row = getStreak.get(item.hash_name) as { streak: number } | undefined;
+                    streak = (row ? row.streak : 0) + 1;
+                }
+                updateStreak.run({ market_name: item.hash_name, streak });
+
+                // Attach streak to item data so frontend or scanner can easily read it
+                const itemData = { ...item, profit_streak: streak };
+                insertItem.run({ hash_name: item.hash_name, data: JSON.stringify(itemData) });
+            }
+        })();
 
     } catch (err) {
         console.error(err)

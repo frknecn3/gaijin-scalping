@@ -1,45 +1,35 @@
-# syntax = docker/dockerfile:1
+FROM node:22-alpine
 
-# Adjust NODE_VERSION as desired
-ARG NODE_VERSION=22.21.1
-FROM node:${NODE_VERSION}-slim AS base
-
-LABEL fly_launch_runtime="Node.js"
-
-# Node.js app lives here
 WORKDIR /app
 
-# Set production environment
-ENV NODE_ENV="production"
+# Install native build tools needed for better-sqlite3
+RUN apk add --no-cache python3 make g++
 
+# Copy root package.json and install backend dependencies
+COPY package*.json ./
+RUN npm install
 
-# Throw-away build stage to reduce size of final image
-FROM base AS build
+# Copy backend source
+COPY tsconfig.json ./
+COPY src/ ./src/
 
-# Install packages needed to build node modules
-RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y build-essential node-gyp pkg-config python-is-python3
+# Copy frontend source
+COPY frontend/ ./frontend/
 
-# Install node modules
-COPY package-lock.json package.json ./
-RUN npm ci --include=dev
-
-# Copy application code
-COPY . .
-
-# Build application
+# Build backend
 RUN npm run build
 
-# Remove development dependencies
-RUN npm prune --omit=dev
+# Build frontend
+WORKDIR /app/frontend
+RUN npm install
+RUN npm run build
 
+# Go back to root
+WORKDIR /app
 
-# Final stage for app image
-FROM base
+# Ensure data directory exists
+RUN mkdir -p data
 
-# Copy built application
-COPY --from=build /app /app
+EXPOSE 4000
 
-# Start the server by default, this can be overwritten at runtime
-EXPOSE 3000
-CMD [ "npm", "run", "start" ]
+CMD ["node", "dist/app.js"]

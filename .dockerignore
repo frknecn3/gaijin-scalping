@@ -1,5 +1,8 @@
+node_modules
+frontend/node_modules
+frontend/dist
+dist
+data/*.db*
+.git
+showcase.png
 .env
-node_modules/
-dist/
-data/
-*/.DS_Store

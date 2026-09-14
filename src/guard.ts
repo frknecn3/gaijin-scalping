@@ -3,21 +3,36 @@ import fs from 'fs';
 import path from 'path'
 import { marketPost, post, sellerShouldGet, waitForAssetIdByMarketId, getInvAssets } from "./helpers/helpers.js";
 import { getAvailableBases, addBasis } from "./helpers/basisTracker.js";
+import { syncOpenOrders } from "./helpers/orderSync.js";
+import db from "./db/database.js";
+import { getBotSettings, isItemLiquidated } from "./helpers/settingsManager.js";
 dotenv.config();
 
 // ================= CONFIG =================
 
-const MIN_PROFIT = 0.01;     // %8 net kâr
 const FEE = 0.3;            // %15 Gaijin komisyonu
 const COOLDOWN = 60_000;     // 60 saniye
-const DRY_RUN = true;        // true = sadece log
 const token = process.env.TOKEN;
 
 let standingOrders: any[] = [];
 const ignore: string[] = [];
 const ignoreBasisItems: string[] = []; // Items in this list will be sold regardless of profitability
-const IGNORE_ALL_BASIS = true; // Set to true to bypass basis checks for all items (liquidate mode)
-const cancelledOrders = new Set<number>();
+function isCancelled(orderId: number | string): boolean {
+    try {
+        const row = db.prepare('SELECT id FROM CancelledOrders WHERE id = ?').get(String(orderId));
+        return !!row;
+    } catch {
+        return false;
+    }
+}
+
+function recordCancelled(orderId: number | string) {
+    try {
+        db.prepare('INSERT OR IGNORE INTO CancelledOrders (id) VALUES (?)').run(String(orderId));
+    } catch (e) {
+        console.error("[GUARD] Error in recordCancelled:", e);
+    }
+}
 
 function sleep(ms: number) {
     return new Promise(res => setTimeout(res, ms));
@@ -26,49 +41,15 @@ function sleep(ms: number) {
 
 
 const checkStandingOrders = async () => {
+    const settings = getBotSettings();
+    const MIN_PROFIT = settings.guardMinProfit;
+    const IGNORE_ALL_BASIS = settings.ignoreAllBasis;
 
-    const filePath = './data/orders.json';
-    const dirPath = path.dirname(filePath);
+    const fetchedOrders = await syncOpenOrders();
 
-    if (fs.existsSync('./data/orders.json')) {
-        try {
-            const fileContent = fs.readFileSync('./data/orders.json', 'utf-8').trim();
-            standingOrders = fileContent ? JSON.parse(fileContent) : [];
-        } catch (e: any) {
-            console.error("Error parsing orders.json, defaulting to empty array:", e.message);
-            standingOrders = [];
-        }
-    }
-    else {
-        fs.mkdirSync(dirPath, { recursive: true });
-        fs.writeFileSync(filePath, JSON.stringify([]))
-    }
-
-
-    const json = await post({ action: "cln_get_user_open_orders", token })
-
-    fs.writeFileSync('./data/orders.json', JSON.stringify(json.response || []))
-
-
-
-    let pendingItems: any[] = [];
+    let pendingItems: any[] = [...fetchedOrders];
     const newSellOrdersCount: Record<string, number> = {};
-
-    if (Array.isArray(json.response)) {
-        pendingItems = [...json.response]
-    }
     const activeOrdersTracker: any[] = [...pendingItems];
-
-    // Check for fulfilled BUY orders
-    for (const oldOrder of standingOrders) {
-        if (oldOrder.type === "BUY") {
-            const stillOpen = pendingItems.find((o: any) => o.id === oldOrder.id);
-            if (!stillOpen && !cancelledOrders.has(oldOrder.id)) {
-                console.log(`[BasisTracker] BUY order fulfilled for ${oldOrder.market} at ${oldOrder.localPrice / 10000}`);
-                addBasis(oldOrder.market, oldOrder.localPrice / 10000);
-            }
-        }
-    }
 
     const assignedBasesIndex: Record<string, number> = {};
 
@@ -118,23 +99,72 @@ const checkStandingOrders = async () => {
         if (item.type == "BUY") {
             console.log("BUY:", item.market)
 
+            // Per-Item Liquidation Safeguard:
+            // If item is marked for liquidation, do NOT keep buy orders active! Cancel immediately.
+            if (isItemLiquidated(item.market)) {
+                console.warn(`[GUARD] Cancelling BUY order for ${item.market}: Item is in LIQUIDATION mode.`);
+                recordCancelled(item.id);
+                const idx = activeOrdersTracker.findIndex(o => o.id === item.id);
+                if (idx !== -1) activeOrdersTracker.splice(idx, 1);
+
+                await marketPost({
+                    action: "cancel_order",
+                    pairId: item.pairId,
+                    orderId: item.id,
+                    token
+                });
+                continue;
+            }
+
             const unnecessarilyHighBuy = (item.localPrice / 10000) > (trueHighestCompetitorBuy + 0.01) + 0.005;
 
             console.log("unnecessarily high? ", unnecessarilyHighBuy)
             console.log(item.localPrice / 10000, trueHighestCompetitorBuy)
 
-            const unprofitable = lowestSell * 0.85 - highestBid < MIN_PROFIT
-
-            console.log("profit ölçer:", lowestSell * 0.85, highestBid, unprofitable)
+            const unprofitable = lowestSell * 0.85 - highestBid < MIN_PROFIT;
 
             if (unprofitable) {
+                // If the market price dropped and this buy order is no longer profitable:
+                // CANCEL IT IMMEDIATELY to prevent getting dumped on by a falling knife!
+                console.warn(`[GUARD] Cancelling UNPROFITABLE BUY order for ${item.market} (Spread: ${(lowestSell * 0.85 - highestBid).toFixed(3)} < ${MIN_PROFIT}).`);
+                recordCancelled(item.id);
+                const idx = activeOrdersTracker.findIndex(o => o.id === item.id);
+                if (idx !== -1) activeOrdersTracker.splice(idx, 1);
+
+                await marketPost({
+                    action: "cancel_order",
+                    pairId: item.pairId,
+                    orderId: item.id,
+                    token
+                });
+                continue;
+            }
+
+            // Check Buy Order TTL:
+            // If our buy order is outbid (userBid < highestBid) and has been sitting for > buyOrderTtlMinutes
+            const orderCreatedAt = item.created_at ? new Date(item.created_at + 'Z').getTime() : Date.now();
+            const orderAgeMinutes = (Date.now() - orderCreatedAt) / (60 * 1000);
+            const isBuyTtlExpired = (userBid < highestBid) && (orderAgeMinutes >= settings.buyOrderTtlMinutes);
+
+            if (isBuyTtlExpired) {
+                console.warn(`[GUARD] Cancelling TTL-EXPIRED BUY order for ${item.market} (Age: ${orderAgeMinutes.toFixed(1)}m >= ${settings.buyOrderTtlMinutes}m).`);
+                recordCancelled(item.id);
+                const idx = activeOrdersTracker.findIndex(o => o.id === item.id);
+                if (idx !== -1) activeOrdersTracker.splice(idx, 1);
+
+                await marketPost({
+                    action: "cancel_order",
+                    pairId: item.pairId,
+                    orderId: item.id,
+                    token
+                });
                 continue;
             }
 
 
             if (userBid < highestBid && (lowestSell * 0.85 - highestBid) > MIN_PROFIT || unnecessarilyHighBuy) {
 
-                cancelledOrders.add(item.id);
+                recordCancelled(item.id);
                 const idx = activeOrdersTracker.findIndex(o => o.id === item.id);
                 if (idx !== -1) activeOrdersTracker.splice(idx, 1);
 
@@ -147,6 +177,13 @@ const checkStandingOrders = async () => {
 
                 if (!res1?.response?.success) {
                     console.log("Failed to cancel BUY order, skipping relist.");
+                    continue;
+                }
+
+                // Guard check: make sure another BUY order for this market hasn't appeared
+                const anotherBuyExists = activeOrdersTracker.some(o => o.type === "BUY" && o.market === item.market);
+                if (anotherBuyExists) {
+                    console.warn(`[GUARD] Skipped relisting BUY for ${item.market}: Another BUY order already exists for this market.`);
                     continue;
                 }
 
@@ -170,11 +207,20 @@ const checkStandingOrders = async () => {
                 })
 
                 if (res?.response?.success) {
+                    const newOrderId = res.response.orderId?.toString() || `pending_${Date.now()}`;
                     activeOrdersTracker.push({
+                        id: newOrderId,
                         type: "BUY",
                         market: item.market,
                         localPrice: priceToSet
                     });
+                    db.prepare('INSERT OR REPLACE INTO Orders (id, pairId, market, type, localPrice) VALUES (?, ?, ?, ?, ?)').run(
+                        newOrderId,
+                        item.pairId || '',
+                        item.market,
+                        'BUY',
+                        priceToSet
+                    );
                 }
             }
         }
@@ -189,12 +235,131 @@ const checkStandingOrders = async () => {
             const basisIndex = assignedBasesIndex[item.market] || 0;
             assignedBasesIndex[item.market] = basisIndex + 1;
             const availableBases = getAvailableBases(item.market);
-            const trueBasis = availableBases[basisIndex] || highestBid; // Fallback to highestBid if not found
+            const trueBasis = availableBases[basisIndex];
 
-            const unprofitable = !IGNORE_ALL_BASIS && !ignoreBasisItems.includes(item.market) && (lowestSell * 0.85 - trueBasis < MIN_PROFIT);
+            const targetUndercutPrice = trueLowestCompetitorSell - 0.01;
 
+            // Inventory Hold Timeout / Auto-Breakeven check:
+            // Calculate how long this sell order has been active
+            const sellCreatedAt = item.created_at ? new Date(item.created_at + 'Z').getTime() : Date.now();
+            const sellAgeHours = (Date.now() - sellCreatedAt) / (60 * 60 * 1000);
+            const isHoldTimedOut = sellAgeHours >= settings.inventoryHoldTimeoutHours;
 
-            function extractMarketId(marketName: string) {
+            // If held longer than inventoryHoldTimeoutHours, target breakeven (0.00 GJN profit) to recover capital
+            const effectiveMinProfit = isHoldTimedOut ? 0.00 : MIN_PROFIT;
+
+            if (isHoldTimedOut) {
+                console.log(`[SELL-GUARD] ${item.market} listed for ${sellAgeHours.toFixed(1)}h >= ${settings.inventoryHoldTimeoutHours}h. Auto-breakeven active.`);
+            }
+
+            const isLiquidated = isItemLiquidated(item.market);
+            if (isLiquidated) {
+                console.log(`[SELL-GUARD] ${item.market} is in PER-ITEM LIQUIDATION mode. Disregarding basis & profit.`);
+            }
+
+            // Queue-depth & volume analysis for dynamic safe liquidation
+            let queueAhead = 0;
+            for (const [pStr, amount] of (market.response?.SELL || [])) {
+                const p = pStr / 10000;
+                if (p < userBid - 0.001) {
+                    queueAhead += amount;
+                } else {
+                    break;
+                }
+            }
+
+            let dailyVolume = 10;
+            try {
+                const itemRow = db.prepare('SELECT data FROM Items WHERE hash_name = ?').get(item.market) as { data: string } | undefined;
+                if (itemRow?.data) {
+                    const parsed = JSON.parse(itemRow.data);
+                    if (typeof parsed.last2Volume === 'number') {
+                        dailyVolume = Math.max(parsed.last2Volume / 2, 0.5);
+                    }
+                }
+            } catch {}
+
+            const clearanceTimeHours = (queueAhead / dailyVolume) * 24;
+
+            let isSoftStopLoss = false;
+            let isEmergencyDump = false;
+            let targetSellPrice = targetUndercutPrice;
+
+            // Safe Gradual Escalation Ladder:
+            if (!isLiquidated && settings.enableDynamicLiquidation && trueBasis !== undefined) {
+                const projectedSoftLoss = trueBasis - (targetUndercutPrice * 0.85);
+                const maxAllowedSoftLoss = trueBasis * (settings.softStopLossMaxPercent / 100);
+
+                // Stage 2: Soft Stop-Loss
+                // Criteria: Held >= softStopLossMinAgeHours (6h), queue ahead >= 3 items, clearance >= queueClearanceThresholdHours (24h)
+                // And loss is within softStopLossMaxPercent (5%)
+                if (
+                    sellAgeHours >= settings.softStopLossMinAgeHours &&
+                    queueAhead >= 3 &&
+                    clearanceTimeHours >= settings.queueClearanceThresholdHours &&
+                    targetUndercutPrice > 0 &&
+                    projectedSoftLoss > 0 &&
+                    projectedSoftLoss <= maxAllowedSoftLoss
+                ) {
+                    isSoftStopLoss = true;
+                    targetSellPrice = targetUndercutPrice;
+                    console.log(`[SAFE-STOP-LOSS] ${item.market} eligible for soft stop-loss! Age: ${sellAgeHours.toFixed(1)}h >= ${settings.softStopLossMinAgeHours}h, Queue: ${queueAhead}, Clearance: ${clearanceTimeHours.toFixed(1)}h >= ${settings.queueClearanceThresholdHours}h. Projected loss: ${projectedSoftLoss.toFixed(2)} GJN (${((projectedSoftLoss / trueBasis) * 100).toFixed(1)}% <= ${settings.softStopLossMaxPercent}%). Undercutting to ${targetUndercutPrice.toFixed(2)} GJN.`);
+                }
+
+                // Stage 3: Emergency Dump (Last Resort)
+                // Criteria: Held >= emergencyDumpMinAgeHours (18h), queue ahead >= 4 items, clearance >= 36h,
+                // Soft stop-loss couldn't trigger (e.g. ask price too far crashed or queue completely stuck),
+                // And highest BUY bid gives loss within emergencyDumpMaxLossPercent (15%)
+                const emergencyLoss = trueBasis - (highestBid * 0.85);
+                const maxEmergencyLoss = trueBasis * (settings.emergencyDumpMaxLossPercent / 100);
+
+                if (
+                    !isSoftStopLoss &&
+                    sellAgeHours >= settings.emergencyDumpMinAgeHours &&
+                    queueAhead >= 4 &&
+                    clearanceTimeHours >= 36 &&
+                    highestBid > 0 &&
+                    emergencyLoss > 0 &&
+                    emergencyLoss <= maxEmergencyLoss
+                ) {
+                    isEmergencyDump = true;
+                    targetSellPrice = highestBid;
+                    console.log(`[EMERGENCY-DUMP] ${item.market} triggers emergency dump to highest BUY! Age: ${sellAgeHours.toFixed(1)}h >= ${settings.emergencyDumpMinAgeHours}h, Queue: ${queueAhead}, Clearance: ${clearanceTimeHours.toFixed(1)}h. Highest bid: ${highestBid.toFixed(2)} GJN, Loss: ${emergencyLoss.toFixed(2)} GJN (${((emergencyLoss / trueBasis) * 100).toFixed(1)}% <= ${settings.emergencyDumpMaxLossPercent}%).`);
+                }
+
+                // Stage 4: Dead Stock Auto-Clearance (Prolonged Stale Inventory Escalation)
+                // If an item has been listed for >= 20h or >= 36h, rigid percentage limits and queue formulas
+                // must NOT keep it trapped forever as a permanent bagholder!
+                if (!isLiquidated && settings.enableDynamicLiquidation) {
+                    if (!isSoftStopLoss && !isEmergencyDump) {
+                        if (sellAgeHours >= 36 && highestBid > 0) {
+                            // >= 36 hours stuck: Unconditionally dump to highest BUY bid and free the trapped cash!
+                            isEmergencyDump = true;
+                            targetSellPrice = highestBid;
+                            console.log(`[DEAD-STOCK-DUMP] ${item.market} has been stuck for ${sellAgeHours.toFixed(1)}h (>= 36h). Bypassing loss caps and dumping to highest BUY: ${highestBid.toFixed(2)} GJN.`);
+                        } else if (sellAgeHours >= 20 && targetUndercutPrice > 0) {
+                            // >= 20 hours stuck: Allow undercutting to current market ask so it can compete and sell!
+                            isSoftStopLoss = true;
+                            targetSellPrice = targetUndercutPrice;
+                            console.log(`[DEAD-STOCK-UNDERCUT] ${item.market} has been stuck for ${sellAgeHours.toFixed(1)}h (>= 20h). Forcing undercut to market ask: ${targetUndercutPrice.toFixed(2)} GJN.`);
+                        }
+                    }
+                }
+            }
+
+            // CRITICAL SAFEGUARD:
+            // If an item is NOT in liquidation / stop-loss:
+            // 1. If trueBasis is known, check that (netIncome - basis >= effectiveMinProfit).
+            // 2. If trueBasis is UNKNOWN (undefined), REFUSE to undercut to prevent accidental losses on unboxed/external items!
+            const basisUnprofitable = (!isLiquidated && !isSoftStopLoss && !isEmergencyDump)
+                ? (trueBasis !== undefined ? (targetUndercutPrice * 0.85 - trueBasis < effectiveMinProfit) : true)
+                : false;
+
+            const unprofitable = basisUnprofitable || targetSellPrice <= 0;
+
+            function extractMarketId(marketName: string): number | null {
+                const row = db.prepare('SELECT asset_id FROM IdMap WHERE market_name = ?').get(marketName) as { asset_id: number } | undefined;
+                if (row?.asset_id) return row.asset_id;
                 const match = marketName.match(/(?:^id|^ugcitem_)(\d+)/);
                 return match ? Number(match[1]) : null;
             }
@@ -207,20 +372,24 @@ const checkStandingOrders = async () => {
                 continue;
             };
 
-            if (userBid - lowestSell > 0.50) {
-                continue;
-            }
+            const shouldRelist = isLiquidated
+                ? (Math.abs(userBid - targetUndercutPrice) > 0.005 && targetUndercutPrice > 0)
+                : isEmergencyDump
+                ? (highestBid > 0 && Math.abs(userBid - highestBid) > 0.005)
+                : isSoftStopLoss
+                ? (targetUndercutPrice > 0 && Math.abs(userBid - targetUndercutPrice) > 0.005)
+                : (unnecessarilyLowSell || userBid > lowestSell);
 
-            if (unnecessarilyLowSell || userBid > lowestSell) {
+            if (shouldRelist) {
 
                 console.log("işlemi başlat")
 
-                if (!unnecessarilyLowSell && unprofitable) {
-                    console.log("artık kârsız")
+                if (!isLiquidated && !isSoftStopLoss && !isEmergencyDump && !unnecessarilyLowSell && unprofitable) {
+                    console.log(`[SELL-GUARD] ${item.market} undercut kârsız olduğu için yapılmadı. (Kâr: ${(targetUndercutPrice * 0.85 - (trueBasis || 0)).toFixed(2)}, Basis: ${trueBasis ?? 'yok'}, Queue: ${queueAhead}, Clearance: ${clearanceTimeHours.toFixed(1)}h, Age: ${sellAgeHours.toFixed(1)}h)`);
                     continue;
                 };
 
-                cancelledOrders.add(item.id);
+                recordCancelled(item.id);
                 const idx = activeOrdersTracker.findIndex(o => o.id === item.id);
                 if (idx !== -1) activeOrdersTracker.splice(idx, 1);
 
@@ -255,11 +424,11 @@ const checkStandingOrders = async () => {
                     market_name: item.market
                 })
 
-                const price = Math.round((trueLowestCompetitorSell - 0.01) * 10000);
+                const price = Math.round(targetSellPrice * 10000);
 
                 const res = await post({
                     action: "cln_market_sell",
-                    token: process.env.SELLTOKEN,
+                    token: process.env.SELLTOKEN || token,
                     transactid: Math.round(Math.random() * 100000),
                     reqstamp: Date.now(),
                     appid: 1067,
@@ -271,7 +440,7 @@ const checkStandingOrders = async () => {
                     seller_should_get: sellerShouldGet(price),
                     agree_stamp: Date.now(),
                     market_name: item.market,
-                    privateMode: false,
+                    privateMode: true,
                 })
 
                 if (res?.response?.error == "WRONG_PRICE") {
@@ -296,8 +465,9 @@ const checkStandingOrders = async () => {
         const inv = await getInvAssets();
 
         let idMap: Record<string, number> = {};
-        if (fs.existsSync('./data/id_map.json')) {
-            idMap = JSON.parse(fs.readFileSync('./data/id_map.json', 'utf-8')) || {};
+        const idMapRows = db.prepare('SELECT market_name, asset_id FROM IdMap').all() as { market_name: string, asset_id: number }[];
+        for (const row of idMapRows) {
+            idMap[row.market_name] = row.asset_id;
         }
         const normalIdToMarketName: { [id: string]: string } = {};
         for (const [marketName, normalId] of Object.entries(idMap)) {
@@ -315,7 +485,7 @@ const checkStandingOrders = async () => {
 
         const activeSellOrdersByMarket: Record<string, number> = {};
         for (const item of pendingItems) {
-            if (item.type === "SELL" && !cancelledOrders.has(item.id)) {
+            if (item.type === "SELL" && !isCancelled(item.id)) {
                 activeSellOrdersByMarket[item.market] = (activeSellOrdersByMarket[item.market] || 0) + 1;
             }
         }
@@ -341,13 +511,18 @@ const checkStandingOrders = async () => {
 
                 for (let i = 0; i < idleItems.length; i++) {
                     const unassignedBaseIndex = activeSellOrdersCount + i;
-                    const basis = availableBases[unassignedBaseIndex] || highestBid; // FALLBACK BASIS
+                    const basis = availableBases[unassignedBaseIndex];
                     const targetPrice = lowestSell - 0.01;
-                    const profit = targetPrice * 0.85 - basis;
+                    if (targetPrice <= 0) continue;
 
-                    if (profit >= MIN_PROFIT || IGNORE_ALL_BASIS || ignoreBasisItems.includes(market)) {
+                    const isLiquidated = isItemLiquidated(market);
+                    const basisOk = isLiquidated
+                        ? true
+                        : (basis !== undefined && targetPrice * 0.85 - basis >= MIN_PROFIT);
+
+                    if (basisOk) {
                         const assetId = idleItems[i].assetId;
-                        console.log(`[Auto-Lister] Listing ${market} from inventory! Basis: ${basis} (Fallback: ${!availableBases[unassignedBaseIndex]}, Ignored: ${IGNORE_ALL_BASIS || ignoreBasisItems.includes(market)}), Sell Price: ${targetPrice.toFixed(2)}, Profit: ${profit.toFixed(2)}`);
+                        console.log(`[Auto-Lister] Listing ${market} from inventory! Target Price: ${targetPrice.toFixed(2)}, Basis: ${basis ?? 'yok'}`);
                         const price = Math.round(targetPrice * 10000);
                         await post({
                             action: "cln_market_sell",
@@ -363,7 +538,7 @@ const checkStandingOrders = async () => {
                             seller_should_get: sellerShouldGet(price),
                             agree_stamp: Date.now(),
                             market_name: market,
-                            privateMode: false
+                            privateMode: true
                         });
                     }
                 }
@@ -374,31 +549,36 @@ const checkStandingOrders = async () => {
     }
 }
 
-checkStandingOrders();
+export function startGuardLoop() {
+    console.log("[GUARD] Guard service started (Standing Orders & Auto-Lister active).");
+    checkStandingOrders();
 
-function scheduleNextRun() {
-    const x = 3
-    const delaySec = Math.floor(Math.random() * (x - 1 + 1)) + 1; // 50–150
-    const delayMs = delaySec * 1000;
+    function scheduleNextRun() {
+        const x = 3;
+        const delaySec = Math.floor(Math.random() * (x - 1 + 1)) + 1; // 1-3s
+        const delayMs = delaySec * 1000;
 
-    console.log(`⏱️ Next run in ${delaySec}s`);
+        setTimeout(async () => {
+            const ACTION_PROBABILITY = 0.5;
 
-    setTimeout(async () => {
-        const ACTION_PROBABILITY = 0.5; // %65 ihtimalle sadece bak
-
-        try {
-            if (Math.random() > ACTION_PROBABILITY) {
-                console.log("👀 sadece izleme turu");
-            } else {
-                await checkStandingOrders();
+            try {
+                if (Math.random() > ACTION_PROBABILITY) {
+                    // Watch-only cycle
+                } else {
+                    await checkStandingOrders();
+                }
+            } catch (err) {
+                console.error("⚠️ checkStandingOrders error:", err);
+            } finally {
+                scheduleNextRun();
             }
-        } catch (err) {
-            console.error("⚠️ checkStandingOrders error:", err);
-        } finally {
-            scheduleNextRun();
-        }
-    }, delayMs);
+        }, delayMs);
+    }
+
+    scheduleNextRun();
 }
 
-
-scheduleNextRun();
+// If run directly (e.g. node dist/guard.js)
+if (process.argv[1]?.includes('guard')) {
+    startGuardLoop();
+}

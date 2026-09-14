@@ -1,56 +1,44 @@
-import fs from 'fs';
-import path from 'path';
-
-const basisFilePath = './data/basis.json';
-
-type BasisData = {
-    [market: string]: number[];
-};
-
-function getBasisData(): BasisData {
-    if (!fs.existsSync(basisFilePath)) {
-        return {};
-    }
-    try {
-        const data = fs.readFileSync(basisFilePath, 'utf-8');
-        return JSON.parse(data) || {};
-    } catch {
-        return {};
-    }
-}
-
-function saveBasisData(data: BasisData) {
-    const dirPath = path.dirname(basisFilePath);
-    if (!fs.existsSync(dirPath)) {
-        fs.mkdirSync(dirPath, { recursive: true });
-    }
-    fs.writeFileSync(basisFilePath, JSON.stringify(data, null, 2));
-}
+import db from '../db/database.js';
 
 export function addBasis(market: string, price: number) {
-    const data = getBasisData();
-    if (!data[market]) {
-        data[market] = [];
+    const row = db.prepare('SELECT basis_prices FROM Basis WHERE market_name = ?').get(market) as { basis_prices: string } | undefined;
+    
+    let prices: number[] = [];
+    if (row && row.basis_prices) {
+        prices = JSON.parse(row.basis_prices);
     }
-    data[market].push(price);
-    // Sort descending so highest cost basis is first
-    data[market].sort((a, b) => b - a);
-    saveBasisData(data);
+    
+    prices.push(price);
+    prices.sort((a, b) => b - a); // highest cost basis first
+    
+    db.prepare(`
+        INSERT INTO Basis (market_name, basis_prices)
+        VALUES (@market, @prices)
+        ON CONFLICT(market_name) DO UPDATE SET basis_prices = @prices
+    `).run({ market, prices: JSON.stringify(prices) });
 }
 
 export function consumeBasis(market: string) {
-    const data = getBasisData();
-    if (data[market] && data[market].length > 0) {
-        // When a SELL order fulfills, we consume the highest cost basis.
-        data[market].shift(); 
-        if (data[market].length === 0) {
-            delete data[market];
+    const row = db.prepare('SELECT basis_prices FROM Basis WHERE market_name = ?').get(market) as { basis_prices: string } | undefined;
+    
+    if (row && row.basis_prices) {
+        const prices: number[] = JSON.parse(row.basis_prices);
+        if (prices.length > 0) {
+            prices.shift(); // consume highest
+            
+            if (prices.length === 0) {
+                db.prepare('DELETE FROM Basis WHERE market_name = ?').run(market);
+            } else {
+                db.prepare('UPDATE Basis SET basis_prices = ? WHERE market_name = ?').run(JSON.stringify(prices), market);
+            }
         }
-        saveBasisData(data);
     }
 }
 
 export function getAvailableBases(market: string): number[] {
-    const data = getBasisData();
-    return data[market] || [];
+    const row = db.prepare('SELECT basis_prices FROM Basis WHERE market_name = ?').get(market) as { basis_prices: string } | undefined;
+    if (row && row.basis_prices) {
+        return JSON.parse(row.basis_prices);
+    }
+    return [];
 }
