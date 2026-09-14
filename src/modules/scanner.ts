@@ -109,9 +109,15 @@ export async function scanMarketForOpportunities() {
 
             if (liveTierRule) {
                 liveRequiredVolume = liveTierRule.minVolume;
-                const minPercentProfit = liveBuyPrice * (liveTierRule.minProfitPercent / 100);
-                const minAbsoluteProfit = liveTierRule.minProfitGJN || MIN_PROFIT;
-                requiredProfit = Math.max(minPercentProfit, minAbsoluteProfit);
+                const minPercentProfit = (liveTierRule.minProfitPercent || 0) > 0
+                    ? liveBuyPrice * (liveTierRule.minProfitPercent / 100)
+                    : 0;
+                const minAbsoluteProfit = typeof liveTierRule.minProfitGJN === 'number'
+                    ? liveTierRule.minProfitGJN
+                    : 0;
+
+                // If both are given, take the higher one. If only one is given (> 0), use that one.
+                requiredProfit = Math.max(minPercentProfit, minAbsoluteProfit, 0.01);
             } else {
                 const isLiveDynamicTier = highestBuy >= settings.dynamicProfitThreshold;
                 liveRequiredVolume = isLiveDynamicTier ? settings.dynamicMinVolume : settings.minVolume;
