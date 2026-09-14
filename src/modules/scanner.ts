@@ -2,7 +2,7 @@ import db from '../db/database.js';
 import { canBuyItem, acquireBuyLock, releaseBuyLock, isBuyLocked } from './riskManager.js';
 import { post, marketPost, getPairStat, calculateLiquidityScore } from '../helpers/helpers.js';
 import { syncOpenOrders } from '../helpers/orderSync.js';
-import { getBotSettings, isItemLiquidated } from '../helpers/settingsManager.js';
+import { getBotSettings, isItemLiquidated, getMatchingTierRule } from '../helpers/settingsManager.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -24,8 +24,8 @@ export async function scanMarketForOpportunities() {
 
     const parsedItems = itemsQuery.map(row => JSON.parse(row.data));
 
-    // 2. Score and filter items based on ROI and Volume
-    const scoredItems = [];
+    // 2. Filter & score items
+    const scoredItems: { item: any; score: number }[] = [];
     for (const item of parsedItems) {
         // Skip keys or explicitly ignored items
         if (item.tags?.includes('type:key')) continue;
@@ -47,9 +47,15 @@ export async function scanMarketForOpportunities() {
         }
 
         // Tier-specific volume requirement:
-        // Items >= dynamicProfitThreshold use dynamicMinVolume, cheaper items use standard minVolume
-        const isDynamicTier = (item.buy_price || 0) >= settings.dynamicProfitThreshold;
-        const requiredVolume = isDynamicTier ? settings.dynamicMinVolume : settings.minVolume;
+        // Check if a custom tier rule matches this item's price
+        const candidateTierRule = getMatchingTierRule(item.buy_price || 0, settings);
+        let requiredVolume = settings.minVolume;
+        if (candidateTierRule) {
+            requiredVolume = candidateTierRule.minVolume;
+        } else {
+            const isDynamicTier = (item.buy_price || 0) >= settings.dynamicProfitThreshold;
+            requiredVolume = isDynamicTier ? settings.dynamicMinVolume : settings.minVolume;
+        }
 
         if (item.last2Volume < requiredVolume) continue;
 
@@ -95,30 +101,41 @@ export async function scanMarketForOpportunities() {
 
             if (!lowestSell || !highestBuy) continue;
 
-            // Check live book price tier against required volume
-            const isLiveDynamicTier = highestBuy >= settings.dynamicProfitThreshold;
-            const liveRequiredVolume = isLiveDynamicTier ? settings.dynamicMinVolume : settings.minVolume;
+            const liveBuyPrice = highestBuy + 0.01;
+            const liveTierRule = getMatchingTierRule(liveBuyPrice, settings);
+
+            let liveRequiredVolume = settings.minVolume;
+            let requiredProfit = MIN_PROFIT;
+
+            if (liveTierRule) {
+                liveRequiredVolume = liveTierRule.minVolume;
+                const minPercentProfit = liveBuyPrice * (liveTierRule.minProfitPercent / 100);
+                const minAbsoluteProfit = liveTierRule.minProfitGJN || MIN_PROFIT;
+                requiredProfit = Math.max(minPercentProfit, minAbsoluteProfit);
+            } else {
+                const isLiveDynamicTier = highestBuy >= settings.dynamicProfitThreshold;
+                liveRequiredVolume = isLiveDynamicTier ? settings.dynamicMinVolume : settings.minVolume;
+
+                // Apply dynamic ROI calculation if item price exceeds threshold
+                if (highestBuy >= settings.dynamicProfitThreshold) {
+                    let requiredPercentage = settings.dynamicProfitPercentage;
+                    
+                    // Scale requirement based on 48h volume
+                    if (item.last2Volume >= 100) {
+                        requiredPercentage = settings.dynamicProfitPercentage; // 1x
+                    } else if (item.last2Volume >= 50) {
+                        requiredPercentage = settings.dynamicProfitPercentage * 1.5; // 1.5x
+                    } else {
+                        requiredPercentage = settings.dynamicProfitPercentage * 2.0; // 2x
+                    }
+
+                    requiredProfit = Math.max(MIN_PROFIT, highestBuy * (requiredPercentage / 100));
+                }
+            }
+
             if (item.last2Volume < liveRequiredVolume) continue;
 
             const estimatedProfit = (lowestSell * 0.85) - (highestBuy + 0.01);
-
-            let requiredProfit = MIN_PROFIT;
-
-            // Apply dynamic ROI calculation if item price exceeds threshold
-            if (highestBuy >= settings.dynamicProfitThreshold) {
-                let requiredPercentage = settings.dynamicProfitPercentage;
-                
-                // Scale requirement based on 48h volume
-                if (item.last2Volume >= 100) {
-                    requiredPercentage = settings.dynamicProfitPercentage; // 1x
-                } else if (item.last2Volume >= 50) {
-                    requiredPercentage = settings.dynamicProfitPercentage * 1.5; // 1.5x
-                } else {
-                    requiredPercentage = settings.dynamicProfitPercentage * 2.0; // 2x
-                }
-
-                requiredProfit = Math.max(MIN_PROFIT, highestBuy * (requiredPercentage / 100));
-            }
 
             if (estimatedProfit >= requiredProfit) {
                 const targetBuyPrice = highestBuy + 0.01;
@@ -141,6 +158,46 @@ export async function scanMarketForOpportunities() {
                 if (referenceMaxPrice && referenceMaxPrice > 0 && targetBuyPrice > referenceMaxPrice * 1.10) {
                     console.log(`[SCANNER] 🚩 FACT-CHECK FAILED for ${item.hash_name}. Target Buy (${targetBuyPrice.toFixed(2)}) is dangerously higher than reference price (${referenceMaxPrice.toFixed(2)}).`);
                     continue;
+                }
+
+                // 3. DUAL-SIDED REAL EXECUTION PROOF (Anti-Fake Spread & Ghost Order Guard):
+                // For items at or above dynamicProfitThreshold, ensure that real trades
+                // have actually executed on BOTH sides of the order book in the last 24 hours:
+                if (highestBuy >= settings.dynamicProfitThreshold) {
+                    let lowTrade24h = item.lowestOfLast24h;
+                    let highTrade24h = item.highestOfLast24h;
+
+                    // If cached values are missing, fetch live pairStat on the fly
+                    if (lowTrade24h === undefined || highTrade24h === undefined) {
+                        try {
+                            const stat = await getPairStat(item.hash_name);
+                            if (stat && stat["1h"]) {
+                                const nowSec = Math.floor(Date.now() / 1000);
+                                const tx24h = stat["1h"].filter((d: any) => (nowSec - d[0]) <= 86400);
+                                if (tx24h.length > 0) {
+                                    const prices = tx24h.map((d: any) => d[1] / 10000);
+                                    lowTrade24h = Math.min(...prices);
+                                    highTrade24h = Math.max(...prices);
+                                }
+                            }
+                        } catch {}
+                    }
+
+                    // A) Low-Side Fill Verification (BUY order execution proof):
+                    // If lowest executed trade in 24h is >25% higher than targetBuyPrice,
+                    // sellers never dump down here! Our buy bid would sit empty forever.
+                    if (lowTrade24h && lowTrade24h > 0 && lowTrade24h > targetBuyPrice * 1.25) {
+                        console.log(`[SCANNER] 🚩 GHOST BUY BID DETECTED for ${item.hash_name}. 24h lowest trade (${lowTrade24h.toFixed(2)}) is >25% above target buy (${targetBuyPrice.toFixed(2)}). Bid will never fill. Skipping.`);
+                        continue;
+                    }
+
+                    // B) High-Side Fill Verification (SELL order execution proof):
+                    // If highest executed trade in 24h is >25% below lowestSell,
+                    // buyers never pay this inflated ask! We could never sell high.
+                    if (highTrade24h && highTrade24h > 0 && highTrade24h < lowestSell * 0.75) {
+                        console.log(`[SCANNER] 🚩 ILLUSION ASK DETECTED for ${item.hash_name}. 24h highest trade (${highTrade24h.toFixed(2)}) is >25% below lowest sell (${lowestSell.toFixed(2)}). Impossible to sell high. Skipping.`);
+                        continue;
+                    }
                 }
 
                 // Potential opportunity found!

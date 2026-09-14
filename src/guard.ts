@@ -326,6 +326,25 @@ const checkStandingOrders = async () => {
                     targetSellPrice = highestBid;
                     console.log(`[EMERGENCY-DUMP] ${item.market} triggers emergency dump to highest BUY! Age: ${sellAgeHours.toFixed(1)}h >= ${settings.emergencyDumpMinAgeHours}h, Queue: ${queueAhead}, Clearance: ${clearanceTimeHours.toFixed(1)}h. Highest bid: ${highestBid.toFixed(2)} GJN, Loss: ${emergencyLoss.toFixed(2)} GJN (${((emergencyLoss / trueBasis) * 100).toFixed(1)}% <= ${settings.emergencyDumpMaxLossPercent}%).`);
                 }
+
+                // Stage 4: Dead Stock Auto-Clearance (Prolonged Stale Inventory Escalation)
+                // If an item has been listed for >= 20h or >= 36h, rigid percentage limits and queue formulas
+                // must NOT keep it trapped forever as a permanent bagholder!
+                if (!isLiquidated && settings.enableDynamicLiquidation) {
+                    if (!isSoftStopLoss && !isEmergencyDump) {
+                        if (sellAgeHours >= 36 && highestBid > 0) {
+                            // >= 36 hours stuck: Unconditionally dump to highest BUY bid and free the trapped cash!
+                            isEmergencyDump = true;
+                            targetSellPrice = highestBid;
+                            console.log(`[DEAD-STOCK-DUMP] ${item.market} has been stuck for ${sellAgeHours.toFixed(1)}h (>= 36h). Bypassing loss caps and dumping to highest BUY: ${highestBid.toFixed(2)} GJN.`);
+                        } else if (sellAgeHours >= 20 && targetUndercutPrice > 0) {
+                            // >= 20 hours stuck: Allow undercutting to current market ask so it can compete and sell!
+                            isSoftStopLoss = true;
+                            targetSellPrice = targetUndercutPrice;
+                            console.log(`[DEAD-STOCK-UNDERCUT] ${item.market} has been stuck for ${sellAgeHours.toFixed(1)}h (>= 20h). Forcing undercut to market ask: ${targetUndercutPrice.toFixed(2)} GJN.`);
+                        }
+                    }
+                }
             }
 
             // CRITICAL SAFEGUARD:

@@ -1,6 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 
+export interface ScannerTierRule {
+    id: string;
+    minPrice: number;
+    maxPrice: number | null;
+    minVolume: number;
+    minProfitPercent: number;
+    minProfitGJN: number;
+}
+
+const DEFAULT_TIER_RULES: ScannerTierRule[] = [
+    { id: "tier-1", minPrice: 0.00, maxPrice: 3.00, minVolume: 30, minProfitPercent: 8.0, minProfitGJN: 0.10 },
+    { id: "tier-2", minPrice: 3.00, maxPrice: 7.00, minVolume: 18, minProfitPercent: 7.0, minProfitGJN: 0.25 },
+    { id: "tier-3", minPrice: 7.00, maxPrice: 15.00, minVolume: 10, minProfitPercent: 6.0, minProfitGJN: 0.60 },
+    { id: "tier-4", minPrice: 15.00, maxPrice: null, minVolume: 4, minProfitPercent: 5.0, minProfitGJN: 1.00 }
+];
+
 interface BotSettings {
     guardMinProfit: number;
     scannerMinProfit: number;
@@ -11,6 +27,8 @@ interface BotSettings {
     dynamicProfitThreshold: number;
     dynamicProfitPercentage: number;
     dynamicMinVolume: number;
+    enableTierRules?: boolean;
+    scannerTierRules?: ScannerTierRule[];
     fallingKnifeProtection: boolean;
     fallingKnifeDropPercent: number;
     fallingKnifeMinDelta: number;
@@ -44,6 +62,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         dynamicProfitThreshold: 1.00,
         dynamicProfitPercentage: 5.0,
         dynamicMinVolume: 25,
+        enableTierRules: true,
+        scannerTierRules: DEFAULT_TIER_RULES,
         fallingKnifeProtection: true,
         fallingKnifeDropPercent: 8.0,
         fallingKnifeMinDelta: 0.05,
@@ -103,11 +123,42 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         }
     };
 
+    const handleAddTierRule = () => {
+        const rules = settings.scannerTierRules || [];
+        const lastRule = rules[rules.length - 1];
+        const nextMin = lastRule && lastRule.maxPrice ? lastRule.maxPrice : (lastRule ? lastRule.minPrice + 5 : 0);
+        const newRule: ScannerTierRule = {
+            id: `tier-${Date.now()}`,
+            minPrice: nextMin,
+            maxPrice: null,
+            minVolume: 10,
+            minProfitPercent: 6.0,
+            minProfitGJN: 0.50
+        };
+        setSettings({ ...settings, scannerTierRules: [...rules, newRule] });
+    };
+
+    const handleUpdateTierRule = (index: number, field: keyof ScannerTierRule, value: any) => {
+        const rules = [...(settings.scannerTierRules || [])];
+        rules[index] = { ...rules[index], [field]: value };
+        setSettings({ ...settings, scannerTierRules: rules });
+    };
+
+    const handleDeleteTierRule = (index: number) => {
+        const rules = [...(settings.scannerTierRules || [])];
+        rules.splice(index, 1);
+        setSettings({ ...settings, scannerTierRules: rules });
+    };
+
+    const handleResetTierRules = () => {
+        setSettings({ ...settings, scannerTierRules: DEFAULT_TIER_RULES });
+    };
+
     if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fade-in">
-            <div className="bg-[#181c24] border border-[#2e3646] rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden text-gray-200">
+            <div className="bg-[#181c24] border border-[#2e3646] rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden text-gray-200">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-[#2e3646] bg-[#1c222c]">
                     <div className="flex items-center gap-3">
@@ -322,6 +373,144 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         <span className="text-[11px] text-gray-500 block mt-1">Fiyatı dinamik eşiğin üzerindeki pahalı eşyalar için aranan asgari 48 saatlik satış adedi (Örn: 25).</span>
                                     </div>
                                 </div>
+                            </div>
+
+                            {/* Section: Custom Tier Rules Matrix */}
+                            <div className="bg-[#12161f] p-4 rounded-xl border border-indigo-500/30 space-y-4 shadow-lg shadow-indigo-950/20">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#262c3b] pb-3">
+                                    <div>
+                                        <h3 className="text-sm font-semibold uppercase tracking-wider text-indigo-400 flex items-center gap-2">
+                                            🎯 Kademeli Alım Kuralları (Tier Rules Matrix)
+                                        </h3>
+                                        <p className="text-xs text-gray-400 mt-0.5">
+                                            Eşyaları fiyatlarına göre kademelere ayırarak her bütçe grubu için özel hacim ve kâr kuralları belirleyin.
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSettings({ ...settings, enableTierRules: !settings.enableTierRules })}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 border ${
+                                            settings.enableTierRules
+                                                ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300'
+                                                : 'bg-[#1c222c] border-[#2e3646] text-gray-400'
+                                        }`}
+                                    >
+                                        <span>{settings.enableTierRules ? 'AÇIK (Kademeli Sistem Aktif)' : 'KAPALI (Genel Ayarlar Kullanılır)'}</span>
+                                        <span>{settings.enableTierRules ? '🟢' : '⚪'}</span>
+                                    </button>
+                                </div>
+
+                                {settings.enableTierRules && (
+                                    <div className="space-y-3">
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left text-xs border-collapse">
+                                                <thead>
+                                                    <tr className="border-b border-[#262c3b] text-gray-400 font-semibold">
+                                                        <th className="py-2 px-2">Min Fiyat ($)</th>
+                                                        <th className="py-2 px-2">Max Fiyat ($)</th>
+                                                        <th className="py-2 px-2">Min 48s Hacim</th>
+                                                        <th className="py-2 px-2">Min Kâr (%)</th>
+                                                        <th className="py-2 px-2">Min Kâr ($)</th>
+                                                        <th className="py-2 px-2 text-right">Sil</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-[#1c222c]">
+                                                    {(settings.scannerTierRules || []).map((rule, idx) => (
+                                                        <tr key={rule.id || idx} className="hover:bg-white/[0.02] transition">
+                                                            <td className="py-2 px-2">
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.1"
+                                                                    min="0"
+                                                                    value={rule.minPrice}
+                                                                    onChange={e => handleUpdateTierRule(idx, 'minPrice', parseFloat(e.target.value) || 0)}
+                                                                    className="w-20 bg-[#1c222c] border border-[#2e3646] rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                                                />
+                                                            </td>
+                                                            <td className="py-2 px-2">
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.1"
+                                                                    min="0"
+                                                                    placeholder="Sınırsız"
+                                                                    value={rule.maxPrice !== null && rule.maxPrice !== undefined ? rule.maxPrice : ''}
+                                                                    onChange={e => {
+                                                                        const val = e.target.value === '' ? null : parseFloat(e.target.value);
+                                                                        handleUpdateTierRule(idx, 'maxPrice', isNaN(val as number) ? null : val);
+                                                                    }}
+                                                                    className="w-20 bg-[#1c222c] border border-[#2e3646] rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                                                />
+                                                            </td>
+                                                            <td className="py-2 px-2">
+                                                                <input
+                                                                    type="number"
+                                                                    step="1"
+                                                                    min="1"
+                                                                    value={rule.minVolume}
+                                                                    onChange={e => handleUpdateTierRule(idx, 'minVolume', parseInt(e.target.value) || 1)}
+                                                                    className="w-20 bg-[#1c222c] border border-[#2e3646] rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                                                />
+                                                            </td>
+                                                            <td className="py-2 px-2">
+                                                                <div className="flex items-center gap-1">
+                                                                    <input
+                                                                        type="number"
+                                                                        step="0.5"
+                                                                        min="0.1"
+                                                                        value={rule.minProfitPercent}
+                                                                        onChange={e => handleUpdateTierRule(idx, 'minProfitPercent', parseFloat(e.target.value) || 0.1)}
+                                                                        className="w-16 bg-[#1c222c] border border-[#2e3646] rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                                                    />
+                                                                    <span className="text-gray-400">%</span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="py-2 px-2">
+                                                                <div className="flex items-center gap-1">
+                                                                    <input
+                                                                        type="number"
+                                                                        step="0.05"
+                                                                        min="0.01"
+                                                                        value={rule.minProfitGJN}
+                                                                        onChange={e => handleUpdateTierRule(idx, 'minProfitGJN', parseFloat(e.target.value) || 0.01)}
+                                                                        className="w-16 bg-[#1c222c] border border-[#2e3646] rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                                                    />
+                                                                    <span className="text-gray-400">$</span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="py-2 px-2 text-right">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleDeleteTierRule(idx)}
+                                                                    className="p-1 text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 rounded transition"
+                                                                    title="Kademeyi Sil"
+                                                                >
+                                                                    🗑️
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        <div className="flex items-center justify-between pt-2">
+                                            <button
+                                                type="button"
+                                                onClick={handleAddTierRule}
+                                                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1 shadow-md shadow-indigo-900/30"
+                                            >
+                                                <span>➕</span> Yeni Kademe Ekle
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleResetTierRules}
+                                                className="px-3 py-1.5 bg-transparent hover:bg-white/5 border border-gray-700 text-gray-400 hover:text-gray-300 rounded-lg text-xs transition"
+                                            >
+                                                ↺ Varsayılanları Yükle
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Section: Risk & Order Lifecycle */}

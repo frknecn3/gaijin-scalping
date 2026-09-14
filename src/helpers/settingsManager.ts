@@ -1,5 +1,49 @@
 import db from '../db/database.js';
 
+export interface ScannerTierRule {
+    id: string;              // unique id for react keys
+    minPrice: number;        // Start price (GJN) - e.g. 0, 3, 7, 15
+    maxPrice: number | null; // End price (GJN) - e.g. 3, 7, 15, null for infinite
+    minVolume: number;       // Min 48h volume required (e.g. 30, 18, 10, 4)
+    minProfitPercent: number;// Min profit % (e.g. 8, 7, 6, 5)
+    minProfitGJN: number;    // Min absolute net profit in GJN (e.g. 0.10, 0.25, 0.60, 1.00)
+}
+
+export const DEFAULT_SCANNER_TIER_RULES: ScannerTierRule[] = [
+    {
+        id: "tier-1",
+        minPrice: 0.00,
+        maxPrice: 3.00,
+        minVolume: 30,
+        minProfitPercent: 8.0,
+        minProfitGJN: 0.10
+    },
+    {
+        id: "tier-2",
+        minPrice: 3.00,
+        maxPrice: 7.00,
+        minVolume: 18,
+        minProfitPercent: 7.0,
+        minProfitGJN: 0.25
+    },
+    {
+        id: "tier-3",
+        minPrice: 7.00,
+        maxPrice: 15.00,
+        minVolume: 10,
+        minProfitPercent: 6.0,
+        minProfitGJN: 0.60
+    },
+    {
+        id: "tier-4",
+        minPrice: 15.00,
+        maxPrice: null,
+        minVolume: 4,
+        minProfitPercent: 5.0,
+        minProfitGJN: 1.00
+    }
+];
+
 export interface BotSettings {
     guardMinProfit: number;       // e.g. 0.01 GJN
     scannerMinProfit: number;     // e.g. 0.10 GJN
@@ -10,6 +54,8 @@ export interface BotSettings {
     dynamicProfitThreshold: number; // The price above which the dynamic ROI rule applies
     dynamicProfitPercentage: number; // The base minimum percentage profit required
     dynamicMinVolume: number;       // Min 48h volume required for items >= dynamicProfitThreshold
+    enableTierRules: boolean;       // Enable custom price-based tier rules matrix
+    scannerTierRules: ScannerTierRule[]; // Custom rules list
     fallingKnifeProtection: boolean;      // Enable downward trend safeguard
     fallingKnifeDropPercent: number;     // Drop % in last 30m (default: 8.0)
     fallingKnifeMinDelta: number;        // Minimum absolute GJN drop (default: 0.05)
@@ -37,6 +83,8 @@ const DEFAULT_SETTINGS: BotSettings = {
     dynamicProfitThreshold: 1.00,
     dynamicProfitPercentage: 5.0,
     dynamicMinVolume: 25,
+    enableTierRules: true,
+    scannerTierRules: DEFAULT_SCANNER_TIER_RULES,
     fallingKnifeProtection: true,
     fallingKnifeDropPercent: 8.0,
     fallingKnifeMinDelta: 0.05,
@@ -76,6 +124,8 @@ export function getBotSettings(): BotSettings {
             dynamicProfitThreshold: typeof map.dynamicProfitThreshold === 'number' ? map.dynamicProfitThreshold : DEFAULT_SETTINGS.dynamicProfitThreshold,
             dynamicProfitPercentage: typeof map.dynamicProfitPercentage === 'number' ? map.dynamicProfitPercentage : DEFAULT_SETTINGS.dynamicProfitPercentage,
             dynamicMinVolume: typeof map.dynamicMinVolume === 'number' ? map.dynamicMinVolume : DEFAULT_SETTINGS.dynamicMinVolume,
+            enableTierRules: typeof map.enableTierRules === 'boolean' ? map.enableTierRules : DEFAULT_SETTINGS.enableTierRules,
+            scannerTierRules: Array.isArray(map.scannerTierRules) ? map.scannerTierRules : DEFAULT_SETTINGS.scannerTierRules,
             fallingKnifeProtection: typeof map.fallingKnifeProtection === 'boolean' ? map.fallingKnifeProtection : DEFAULT_SETTINGS.fallingKnifeProtection,
             fallingKnifeDropPercent: typeof map.fallingKnifeDropPercent === 'number' ? map.fallingKnifeDropPercent : DEFAULT_SETTINGS.fallingKnifeDropPercent,
             fallingKnifeMinDelta: typeof map.fallingKnifeMinDelta === 'number' ? map.fallingKnifeMinDelta : DEFAULT_SETTINGS.fallingKnifeMinDelta,
@@ -110,6 +160,8 @@ export function updateBotSettings(partial: Partial<BotSettings>): BotSettings {
         dynamicProfitThreshold: partial.dynamicProfitThreshold !== undefined ? Number(partial.dynamicProfitThreshold) : current.dynamicProfitThreshold,
         dynamicProfitPercentage: partial.dynamicProfitPercentage !== undefined ? Number(partial.dynamicProfitPercentage) : current.dynamicProfitPercentage,
         dynamicMinVolume: partial.dynamicMinVolume !== undefined ? Number(partial.dynamicMinVolume) : current.dynamicMinVolume,
+        enableTierRules: partial.enableTierRules !== undefined ? Boolean(partial.enableTierRules) : current.enableTierRules,
+        scannerTierRules: Array.isArray(partial.scannerTierRules) ? partial.scannerTierRules : current.scannerTierRules,
         fallingKnifeProtection: partial.fallingKnifeProtection !== undefined ? Boolean(partial.fallingKnifeProtection) : current.fallingKnifeProtection,
         fallingKnifeDropPercent: partial.fallingKnifeDropPercent !== undefined ? Number(partial.fallingKnifeDropPercent) : current.fallingKnifeDropPercent,
         fallingKnifeMinDelta: partial.fallingKnifeMinDelta !== undefined ? Number(partial.fallingKnifeMinDelta) : current.fallingKnifeMinDelta,
@@ -136,6 +188,22 @@ export function updateBotSettings(partial: Partial<BotSettings>): BotSettings {
 
     console.log("[SETTINGS] Updated bot settings:", updated);
     return updated;
+}
+
+export function getMatchingTierRule(price: number, settings: BotSettings): ScannerTierRule | null {
+    if (!settings.enableTierRules || !Array.isArray(settings.scannerTierRules) || settings.scannerTierRules.length === 0) {
+        return null;
+    }
+    const matching = settings.scannerTierRules.filter(r => {
+        const minP = typeof r.minPrice === 'number' ? r.minPrice : 0;
+        const maxP = typeof r.maxPrice === 'number' && r.maxPrice > 0 ? r.maxPrice : null;
+        return price >= minP && (maxP === null || price < maxP);
+    });
+
+    if (matching.length === 0) return null;
+    // Sort descending by minPrice to pick the most targeted tier
+    matching.sort((a, b) => (b.minPrice || 0) - (a.minPrice || 0));
+    return matching[0];
 }
 
 export function isItemLiquidated(marketName: string): boolean {

@@ -131,6 +131,9 @@ export async function startRenewOrders(jobState: JobState, isHardRefresh: boolea
                     const highestOfLast24h = transactions24h.length > 0
                         ? Math.max(...transactions24h.map((d: any) => d[1] / 10000))
                         : avgPrice24h;
+                    const lowestOfLast24h = transactions24h.length > 0
+                        ? Math.min(...transactions24h.map((d: any) => d[1] / 10000))
+                        : avgPrice24h;
                     const salesCount24h = transactions24h.length;
 
                     // Dynamic Downward Trend Safeguard (Falling Knife Protection)
@@ -182,6 +185,7 @@ export async function startRenewOrders(jobState: JobState, isHardRefresh: boolea
                         highestOfLast10,
                         avgPrice24h,
                         highestOfLast24h,
+                        lowestOfLast24h,
                         salesCount24h,
                         isFallingKnife,
                         priceDrop30mPercent,
