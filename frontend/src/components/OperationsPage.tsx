@@ -399,15 +399,26 @@ const OperationsPage: React.FC<Props> = ({ onBackToDashboard }) => {
                                                             </div>
                                                         )}
                                                         <div className="min-w-0">
-                                                            <a
-                                                                href={`https://trade.gaijin.net/item/${encodeURIComponent(s.market)}`}
-                                                                target="_blank"
-                                                                rel="noreferrer"
-                                                                className="font-bold text-white hover:text-cyan-400 transition truncate block max-w-[220px]"
-                                                                title={s.name}
-                                                            >
-                                                                {s.name}
-                                                            </a>
+                                                            <div className="flex items-center gap-1.5">
+                                                                <a
+                                                                    href={`https://trade.gaijin.net/market/1067/${encodeURIComponent(s.market)}`}
+                                                                    target="_blank"
+                                                                    rel="noreferrer"
+                                                                    className="font-bold text-white hover:text-cyan-400 transition truncate block max-w-[200px]"
+                                                                    title={s.name}
+                                                                >
+                                                                    {s.name}
+                                                                </a>
+                                                                <a
+                                                                    href={`https://trade.gaijin.net/market/1067/${encodeURIComponent(s.market)}`}
+                                                                    target="_blank"
+                                                                    rel="noreferrer"
+                                                                    className="text-gray-500 hover:text-cyan-400 transition flex-shrink-0"
+                                                                    title="Gaijin Pazarında Aç"
+                                                                >
+                                                                    ↗
+                                                                </a>
+                                                            </div>
                                                             <span className="text-[10px] text-gray-500 font-mono block">
                                                                 {s.market}
                                                             </span>
@@ -495,6 +506,15 @@ const OperationsPage: React.FC<Props> = ({ onBackToDashboard }) => {
                                                 {/* Actions */}
                                                 <td className="py-3 px-4 text-right">
                                                     <div className="flex items-center justify-end gap-1.5">
+                                                        <a
+                                                            href={`https://trade.gaijin.net/market/1067/${encodeURIComponent(s.market)}`}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            className="p-1.5 bg-[#181c24] hover:bg-[#252c39] border border-[#2e3646] text-gray-400 hover:text-cyan-400 rounded-lg text-xs font-semibold transition inline-flex items-center"
+                                                            title="Gaijin Pazarında Aç"
+                                                        >
+                                                            <span>🔗</span>
+                                                        </a>
                                                         <button
                                                             onClick={() => handleLiquidateToggle(s.market)}
                                                             disabled={actionLoading === s.market}
@@ -569,15 +589,26 @@ const OperationsPage: React.FC<Props> = ({ onBackToDashboard }) => {
                                                         </div>
                                                     )}
                                                     <div className="min-w-0">
-                                                        <a
-                                                            href={`https://trade.gaijin.net/item/${encodeURIComponent(b.market)}`}
-                                                            target="_blank"
-                                                            rel="noreferrer"
-                                                            className="font-bold text-white hover:text-purple-400 transition truncate block max-w-[220px]"
-                                                            title={b.name}
-                                                        >
-                                                            {b.name}
-                                                        </a>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <a
+                                                                href={`https://trade.gaijin.net/market/1067/${encodeURIComponent(b.market)}`}
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                                className="font-bold text-white hover:text-purple-400 transition truncate block max-w-[200px]"
+                                                                title={b.name}
+                                                            >
+                                                                {b.name}
+                                                            </a>
+                                                            <a
+                                                                href={`https://trade.gaijin.net/market/1067/${encodeURIComponent(b.market)}`}
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                                className="text-gray-500 hover:text-purple-400 transition flex-shrink-0"
+                                                                title="Gaijin Pazarında Aç"
+                                                            >
+                                                                ↗
+                                                            </a>
+                                                        </div>
                                                         <span className="text-[10px] text-gray-500 font-mono block">
                                                             {b.market}
                                                         </span>
@@ -631,7 +662,7 @@ const OperationsPage: React.FC<Props> = ({ onBackToDashboard }) => {
                                             {/* Link */}
                                             <td className="py-3 px-4 text-right">
                                                 <a
-                                                    href={`https://trade.gaijin.net/item/${encodeURIComponent(b.market)}`}
+                                                    href={`https://trade.gaijin.net/market/1067/${encodeURIComponent(b.market)}`}
                                                     target="_blank"
                                                     rel="noreferrer"
                                                     className="px-2.5 py-1 bg-[#181c24] hover:bg-[#252c39] border border-[#2e3646] text-gray-300 hover:text-white rounded-lg text-xs font-semibold transition inline-flex items-center gap-1"
