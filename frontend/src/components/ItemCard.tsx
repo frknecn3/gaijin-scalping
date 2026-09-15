@@ -111,9 +111,18 @@ const ItemCard = ({ item }: Props) => {
                 <img className='aspect-[9/5] w-full rounded-t-xl' src={item.icon} alt="" />
             </div>
             <div className='px-10 py-4 flex flex-col gap-4'>
-                <h4 className='truncate font-bold'>
-                    {item.name}
-                </h4>
+                <div className='flex items-center justify-between gap-2'>
+                    <a
+                        href={`https://trade.gaijin.net/market/1067/${encodeURIComponent(item.hash_name)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className='truncate font-bold hover:text-cyan-400 transition flex items-center gap-1 text-white'
+                        title="Gaijin Pazarında Aç"
+                    >
+                        <span className="truncate">{item.name}</span>
+                        <span className="text-gray-400 text-xs flex-shrink-0">↗</span>
+                    </a>
+                </div>
 
                 <span>
                     selling at
