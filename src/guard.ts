@@ -291,11 +291,11 @@ const checkStandingOrders = async () => {
                 const maxAllowedSoftLoss = trueBasis * (settings.softStopLossMaxPercent / 100);
 
                 // Stage 2: Soft Stop-Loss
-                // Criteria: Held >= softStopLossMinAgeHours (6h), queue ahead >= 3 items, clearance >= queueClearanceThresholdHours (24h)
+                // Criteria: Held >= softStopLossMinAgeHours (4.5h), queue ahead >= 2 items, clearance >= queueClearanceThresholdHours (16h)
                 // And loss is within softStopLossMaxPercent (5%)
                 if (
                     sellAgeHours >= settings.softStopLossMinAgeHours &&
-                    queueAhead >= 3 &&
+                    queueAhead >= 2 &&
                     clearanceTimeHours >= settings.queueClearanceThresholdHours &&
                     targetUndercutPrice > 0 &&
                     projectedSoftLoss > 0 &&
@@ -307,17 +307,17 @@ const checkStandingOrders = async () => {
                 }
 
                 // Stage 3: Emergency Dump (Last Resort)
-                // Criteria: Held >= emergencyDumpMinAgeHours (18h), queue ahead >= 4 items, clearance >= 36h,
+                // Criteria: Held >= emergencyDumpMinAgeHours (14h), queue ahead >= 3 items, clearance >= 24h,
                 // Soft stop-loss couldn't trigger (e.g. ask price too far crashed or queue completely stuck),
-                // And highest BUY bid gives loss within emergencyDumpMaxLossPercent (15%)
+                // And highest BUY bid gives loss within emergencyDumpMaxLossPercent
                 const emergencyLoss = trueBasis - (highestBid * 0.85);
                 const maxEmergencyLoss = trueBasis * (settings.emergencyDumpMaxLossPercent / 100);
 
                 if (
                     !isSoftStopLoss &&
                     sellAgeHours >= settings.emergencyDumpMinAgeHours &&
-                    queueAhead >= 4 &&
-                    clearanceTimeHours >= 36 &&
+                    queueAhead >= 3 &&
+                    clearanceTimeHours >= 24 &&
                     highestBid > 0 &&
                     emergencyLoss > 0 &&
                     emergencyLoss <= maxEmergencyLoss
@@ -328,20 +328,20 @@ const checkStandingOrders = async () => {
                 }
 
                 // Stage 4: Dead Stock Auto-Clearance (Prolonged Stale Inventory Escalation)
-                // If an item has been listed for >= 20h or >= 36h, rigid percentage limits and queue formulas
+                // If an item has been listed for >= 16h or >= 24h, rigid percentage limits and queue formulas
                 // must NOT keep it trapped forever as a permanent bagholder!
                 if (!isLiquidated && settings.enableDynamicLiquidation) {
                     if (!isSoftStopLoss && !isEmergencyDump) {
-                        if (sellAgeHours >= 36 && highestBid > 0) {
-                            // >= 36 hours stuck: Unconditionally dump to highest BUY bid and free the trapped cash!
+                        if (sellAgeHours >= 24 && highestBid > 0) {
+                            // >= 24 hours stuck: Unconditionally dump to highest BUY bid and free the trapped cash!
                             isEmergencyDump = true;
                             targetSellPrice = highestBid;
-                            console.log(`[DEAD-STOCK-DUMP] ${item.market} has been stuck for ${sellAgeHours.toFixed(1)}h (>= 36h). Bypassing loss caps and dumping to highest BUY: ${highestBid.toFixed(2)} GJN.`);
-                        } else if (sellAgeHours >= 20 && targetUndercutPrice > 0) {
-                            // >= 20 hours stuck: Allow undercutting to current market ask so it can compete and sell!
+                            console.log(`[DEAD-STOCK-DUMP] ${item.market} has been stuck for ${sellAgeHours.toFixed(1)}h (>= 24h). Bypassing loss caps and dumping to highest BUY: ${highestBid.toFixed(2)} GJN.`);
+                        } else if (sellAgeHours >= 16 && targetUndercutPrice > 0) {
+                            // >= 16 hours stuck: Allow undercutting to current market ask so it can compete and sell!
                             isSoftStopLoss = true;
                             targetSellPrice = targetUndercutPrice;
-                            console.log(`[DEAD-STOCK-UNDERCUT] ${item.market} has been stuck for ${sellAgeHours.toFixed(1)}h (>= 20h). Forcing undercut to market ask: ${targetUndercutPrice.toFixed(2)} GJN.`);
+                            console.log(`[DEAD-STOCK-UNDERCUT] ${item.market} has been stuck for ${sellAgeHours.toFixed(1)}h (>= 16h). Forcing undercut to market ask: ${targetUndercutPrice.toFixed(2)} GJN.`);
                         }
                     }
                 }

@@ -691,64 +691,64 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-medium text-emerald-300 mb-1">
-                                            Yumuşak Zarar Kes Min Süre (Saat)
-                                        </label>
-                                        <input
-                                            type="number"
-                                            step="0.5"
-                                            min="1"
-                                            value={settings.softStopLossMinAgeHours}
-                                            onChange={e => setSettings({ ...settings, softStopLossMinAgeHours: parseFloat(e.target.value) || 6.0 })}
-                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-                                        />
-                                        <span className="text-[11px] text-gray-500 block mt-1">Eşya en az bu kadar saat satılmamış olmalıdır (Örn: 6 saat).</span>
+                                         <label className="block text-xs font-medium text-emerald-300 mb-1">
+                                             Yumuşak Zarar Kes Min Süre (Saat)
+                                         </label>
+                                         <input
+                                             type="number"
+                                             step="0.5"
+                                             min="1"
+                                             value={settings.softStopLossMinAgeHours}
+                                             onChange={e => setSettings({ ...settings, softStopLossMinAgeHours: parseFloat(e.target.value) || 4.5 })}
+                                             className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                                         />
+                                         <span className="text-[11px] text-gray-500 block mt-1">Eşya en az bu kadar saat satılmamış olmalıdır (Örn: 4.5 saat).</span>
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-medium text-emerald-300 mb-1">
-                                            Yumuşak Zarar Kes Max Kayıp (%)
-                                        </label>
-                                        <input
-                                            type="number"
-                                            step="0.5"
-                                            min="1"
-                                            max="20"
-                                            value={settings.softStopLossMaxPercent}
-                                            onChange={e => setSettings({ ...settings, softStopLossMaxPercent: parseFloat(e.target.value) || 5.0 })}
-                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-                                        />
-                                        <span className="text-[11px] text-gray-500 block mt-1">Sıranın önüne geçmek için izin verilen azami zarar oranı (Örn: %5).</span>
+                                         <label className="block text-xs font-medium text-emerald-300 mb-1">
+                                             Yumuşak Zarar Kes Max Kayıp (%)
+                                         </label>
+                                         <input
+                                             type="number"
+                                             step="0.5"
+                                             min="1"
+                                             max="20"
+                                             value={settings.softStopLossMaxPercent}
+                                             onChange={e => setSettings({ ...settings, softStopLossMaxPercent: parseFloat(e.target.value) || 5.0 })}
+                                             className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                                         />
+                                         <span className="text-[11px] text-gray-500 block mt-1">Sıranın önüne geçmek için izin verilen azami zarar oranı (Örn: %5).</span>
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-medium text-gray-300 mb-1">
-                                            Kuyruk Erime Eşiği (Saat)
-                                        </label>
-                                        <input
-                                            type="number"
-                                            step="1"
-                                            min="4"
-                                            value={settings.queueClearanceThresholdHours}
-                                            onChange={e => setSettings({ ...settings, queueClearanceThresholdHours: parseFloat(e.target.value) || 24.0 })}
-                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-                                        />
-                                        <span className="text-[11px] text-gray-500 block mt-1">Öndeki sıranın erimesi bu süreden uzun sürecekse müdahale edilir (Örn: 24 saat).</span>
+                                         <label className="block text-xs font-medium text-gray-300 mb-1">
+                                             Kuyruk Erime Eşiği (Saat)
+                                         </label>
+                                         <input
+                                             type="number"
+                                             step="1"
+                                             min="4"
+                                             value={settings.queueClearanceThresholdHours}
+                                             onChange={e => setSettings({ ...settings, queueClearanceThresholdHours: parseFloat(e.target.value) || 16.0 })}
+                                             className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                                         />
+                                         <span className="text-[11px] text-gray-500 block mt-1">Öndeki sıranın erimesi bu süreden uzun sürecekse müdahale edilir (Örn: 16 saat).</span>
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-medium text-amber-300 mb-1">
-                                            Acil Likidasyon Min Süre (Saat)
-                                        </label>
-                                        <input
-                                            type="number"
-                                            step="1"
-                                            min="6"
-                                            value={settings.emergencyDumpMinAgeHours}
-                                            onChange={e => setSettings({ ...settings, emergencyDumpMinAgeHours: parseFloat(e.target.value) || 18.0 })}
-                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
-                                        />
-                                        <span className="text-[11px] text-gray-500 block mt-1">Tamamen tıkanan eşyanın doğrudan BUY tahtasına satılma süresi (Örn: 18 saat).</span>
+                                         <label className="block text-xs font-medium text-amber-300 mb-1">
+                                             Acil Likidasyon Min Süre (Saat)
+                                         </label>
+                                         <input
+                                             type="number"
+                                             step="1"
+                                             min="4"
+                                             value={settings.emergencyDumpMinAgeHours}
+                                             onChange={e => setSettings({ ...settings, emergencyDumpMinAgeHours: parseFloat(e.target.value) || 14.0 })}
+                                             className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                                         />
+                                         <span className="text-[11px] text-gray-500 block mt-1">Tamamen tıkanan eşyanın doğrudan BUY tahtasına satılma süresi (Örn: 14 saat).</span>
                                     </div>
 
                                     <div className="sm:col-span-2">

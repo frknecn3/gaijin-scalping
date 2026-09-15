@@ -93,10 +93,10 @@ const DEFAULT_SETTINGS: BotSettings = {
     maxItemPrice: 4.00,
     maxWalletPercentPerItem: 20.0,
     enableDynamicLiquidation: true,
-    softStopLossMinAgeHours: 6.0,
+    softStopLossMinAgeHours: 4.5,
     softStopLossMaxPercent: 5.0,
-    queueClearanceThresholdHours: 24.0,
-    emergencyDumpMinAgeHours: 18.0,
+    queueClearanceThresholdHours: 16.0,
+    emergencyDumpMinAgeHours: 14.0,
     emergencyDumpMaxLossPercent: 15.0,
     ultraLiquidVolumeThreshold: 100,
     ultraLiquidMaxExposure: 2
