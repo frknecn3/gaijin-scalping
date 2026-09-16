@@ -71,6 +71,8 @@ export interface BotSettings {
     emergencyDumpMaxLossPercent: number; // Maximum allowed loss % in emergency dump (default: 15%)
     ultraLiquidVolumeThreshold: number;  // 48h volume threshold to classify as ultra-liquid (default: 100)
     ultraLiquidMaxExposure: number;      // Maximum copies allowed for ultra-liquid items (default: 2)
+    enableBuying: boolean;               // Master switch for automated BUY orders
+    enableSelling: boolean;              // Master switch for automated SELL order updates & undercuts
 }
 
 const DEFAULT_SETTINGS: BotSettings = {
@@ -99,7 +101,9 @@ const DEFAULT_SETTINGS: BotSettings = {
     emergencyDumpMinAgeHours: 14.0,
     emergencyDumpMaxLossPercent: 15.0,
     ultraLiquidVolumeThreshold: 100,
-    ultraLiquidMaxExposure: 2
+    ultraLiquidMaxExposure: 2,
+    enableBuying: true,
+    enableSelling: true
 };
 
 export function getBotSettings(): BotSettings {
@@ -141,6 +145,8 @@ export function getBotSettings(): BotSettings {
             emergencyDumpMaxLossPercent: typeof map.emergencyDumpMaxLossPercent === 'number' ? map.emergencyDumpMaxLossPercent : DEFAULT_SETTINGS.emergencyDumpMaxLossPercent,
             ultraLiquidVolumeThreshold: typeof map.ultraLiquidVolumeThreshold === 'number' ? map.ultraLiquidVolumeThreshold : DEFAULT_SETTINGS.ultraLiquidVolumeThreshold,
             ultraLiquidMaxExposure: typeof map.ultraLiquidMaxExposure === 'number' ? map.ultraLiquidMaxExposure : DEFAULT_SETTINGS.ultraLiquidMaxExposure,
+            enableBuying: typeof map.enableBuying === 'boolean' ? map.enableBuying : DEFAULT_SETTINGS.enableBuying,
+            enableSelling: typeof map.enableSelling === 'boolean' ? map.enableSelling : DEFAULT_SETTINGS.enableSelling,
         };
     } catch (e) {
         console.error("[SETTINGS] Error reading settings from DB, using defaults:", e);
@@ -177,6 +183,8 @@ export function updateBotSettings(partial: Partial<BotSettings>): BotSettings {
         emergencyDumpMaxLossPercent: partial.emergencyDumpMaxLossPercent !== undefined ? Number(partial.emergencyDumpMaxLossPercent) : current.emergencyDumpMaxLossPercent,
         ultraLiquidVolumeThreshold: partial.ultraLiquidVolumeThreshold !== undefined ? Number(partial.ultraLiquidVolumeThreshold) : current.ultraLiquidVolumeThreshold,
         ultraLiquidMaxExposure: partial.ultraLiquidMaxExposure !== undefined ? Number(partial.ultraLiquidMaxExposure) : current.ultraLiquidMaxExposure,
+        enableBuying: partial.enableBuying !== undefined ? Boolean(partial.enableBuying) : current.enableBuying,
+        enableSelling: partial.enableSelling !== undefined ? Boolean(partial.enableSelling) : current.enableSelling,
     };
 
     const stmt = db.prepare('INSERT OR REPLACE INTO Settings (key, value) VALUES (?, ?)');
@@ -241,3 +249,40 @@ export function getLiquidateItems(): string[] {
         return [];
     }
 }
+
+export function isItemIgnored(marketName: string): boolean {
+    try {
+        const row = db.prepare('SELECT market_name FROM IgnoredItems WHERE market_name = ?').get(marketName);
+        return !!row;
+    } catch {
+        return false;
+    }
+}
+
+export function addIgnoredItem(marketName: string): void {
+    try {
+        db.prepare('INSERT OR IGNORE INTO IgnoredItems (market_name) VALUES (?)').run(marketName);
+        console.log(`[IGNORE] Added ${marketName} to ignored list.`);
+    } catch (e) {
+        console.error(`[IGNORE] Error adding ${marketName} to ignored list:`, e);
+    }
+}
+
+export function removeIgnoredItem(marketName: string): void {
+    try {
+        db.prepare('DELETE FROM IgnoredItems WHERE market_name = ?').run(marketName);
+        console.log(`[IGNORE] Removed ${marketName} from ignored list.`);
+    } catch (e) {
+        console.error(`[IGNORE] Error removing ${marketName} from ignored list:`, e);
+    }
+}
+
+export function getIgnoredItems(): string[] {
+    try {
+        const rows = db.prepare('SELECT market_name FROM IgnoredItems ORDER BY created_at DESC').all() as { market_name: string }[];
+        return rows.map(r => r.market_name);
+    } catch {
+        return [];
+    }
+}
+

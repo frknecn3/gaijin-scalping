@@ -60,6 +60,11 @@ const checkStandingOrders = async () => {
             continue
         };
 
+        if (item.type === 'SELL' && !settings.enableSelling) {
+            // User turned off autonomous SELL management
+            continue;
+        }
+
         const userBid = item.localPrice / 10000
 
         const market = await post({
@@ -269,15 +274,32 @@ const checkStandingOrders = async () => {
             }
 
             let dailyVolume = 10;
+            let parsedItemData: any = null;
             try {
                 const itemRow = db.prepare('SELECT data FROM Items WHERE hash_name = ?').get(item.market) as { data: string } | undefined;
                 if (itemRow?.data) {
-                    const parsed = JSON.parse(itemRow.data);
-                    if (typeof parsed.last2Volume === 'number') {
-                        dailyVolume = Math.max(parsed.last2Volume / 2, 0.5);
+                    parsedItemData = JSON.parse(itemRow.data);
+                    if (typeof parsedItemData.last2Volume === 'number') {
+                        dailyVolume = Math.max(parsedItemData.last2Volume / 2, 0.5);
                     }
                 }
             } catch {}
+
+            // Robust Basis Resolution (Problem 1 Fix):
+            // If trueBasis is missing from local DB (e.g. external item, unboxed, or DB reset),
+            // estimate realistic cost basis so the item is NEVER frozen forever:
+            // 1. If 24h avg trade price is available, use that as benchmark.
+            // 2. Otherwise assume break-even basis based on current listed price (userBid * 0.85).
+            const effectiveBasis = trueBasis !== undefined
+                ? trueBasis
+                : (parsedItemData?.avgPrice24h && parsedItemData.avgPrice24h > 0
+                    ? parsedItemData.avgPrice24h
+                    : (userBid * 0.85));
+
+            const isBasisEstimated = trueBasis === undefined;
+            if (isBasisEstimated) {
+                console.log(`[SELL-GUARD] ${item.market} basis unknown. Using benchmark: ${effectiveBasis.toFixed(2)} GJN (Age: ${sellAgeHours.toFixed(1)}h).`);
+            }
 
             const clearanceTimeHours = (queueAhead / dailyVolume) * 24;
 
@@ -286,9 +308,9 @@ const checkStandingOrders = async () => {
             let targetSellPrice = targetUndercutPrice;
 
             // Safe Gradual Escalation Ladder:
-            if (!isLiquidated && settings.enableDynamicLiquidation && trueBasis !== undefined) {
-                const projectedSoftLoss = trueBasis - (targetUndercutPrice * 0.85);
-                const maxAllowedSoftLoss = trueBasis * (settings.softStopLossMaxPercent / 100);
+            if (!isLiquidated && settings.enableDynamicLiquidation) {
+                const projectedSoftLoss = effectiveBasis - (targetUndercutPrice * 0.85);
+                const maxAllowedSoftLoss = effectiveBasis * (settings.softStopLossMaxPercent / 100);
 
                 // Stage 2: Soft Stop-Loss
                 // Criteria: Held >= softStopLossMinAgeHours (4.5h), queue ahead >= 2 items, clearance >= queueClearanceThresholdHours (16h)
@@ -303,15 +325,15 @@ const checkStandingOrders = async () => {
                 ) {
                     isSoftStopLoss = true;
                     targetSellPrice = targetUndercutPrice;
-                    console.log(`[SAFE-STOP-LOSS] ${item.market} eligible for soft stop-loss! Age: ${sellAgeHours.toFixed(1)}h >= ${settings.softStopLossMinAgeHours}h, Queue: ${queueAhead}, Clearance: ${clearanceTimeHours.toFixed(1)}h >= ${settings.queueClearanceThresholdHours}h. Projected loss: ${projectedSoftLoss.toFixed(2)} GJN (${((projectedSoftLoss / trueBasis) * 100).toFixed(1)}% <= ${settings.softStopLossMaxPercent}%). Undercutting to ${targetUndercutPrice.toFixed(2)} GJN.`);
+                    console.log(`[SAFE-STOP-LOSS] ${item.market} eligible for soft stop-loss! Age: ${sellAgeHours.toFixed(1)}h >= ${settings.softStopLossMinAgeHours}h, Queue: ${queueAhead}, Clearance: ${clearanceTimeHours.toFixed(1)}h >= ${settings.queueClearanceThresholdHours}h. Projected loss: ${projectedSoftLoss.toFixed(2)} GJN (${((projectedSoftLoss / effectiveBasis) * 100).toFixed(1)}% <= ${settings.softStopLossMaxPercent}%). Undercutting to ${targetUndercutPrice.toFixed(2)} GJN.`);
                 }
 
                 // Stage 3: Emergency Dump (Last Resort)
                 // Criteria: Held >= emergencyDumpMinAgeHours (14h), queue ahead >= 3 items, clearance >= 24h,
                 // Soft stop-loss couldn't trigger (e.g. ask price too far crashed or queue completely stuck),
                 // And highest BUY bid gives loss within emergencyDumpMaxLossPercent
-                const emergencyLoss = trueBasis - (highestBid * 0.85);
-                const maxEmergencyLoss = trueBasis * (settings.emergencyDumpMaxLossPercent / 100);
+                const emergencyLoss = effectiveBasis - (highestBid * 0.85);
+                const maxEmergencyLoss = effectiveBasis * (settings.emergencyDumpMaxLossPercent / 100);
 
                 if (
                     !isSoftStopLoss &&
@@ -324,7 +346,7 @@ const checkStandingOrders = async () => {
                 ) {
                     isEmergencyDump = true;
                     targetSellPrice = highestBid;
-                    console.log(`[EMERGENCY-DUMP] ${item.market} triggers emergency dump to highest BUY! Age: ${sellAgeHours.toFixed(1)}h >= ${settings.emergencyDumpMinAgeHours}h, Queue: ${queueAhead}, Clearance: ${clearanceTimeHours.toFixed(1)}h. Highest bid: ${highestBid.toFixed(2)} GJN, Loss: ${emergencyLoss.toFixed(2)} GJN (${((emergencyLoss / trueBasis) * 100).toFixed(1)}% <= ${settings.emergencyDumpMaxLossPercent}%).`);
+                    console.log(`[EMERGENCY-DUMP] ${item.market} triggers emergency dump to highest BUY! Age: ${sellAgeHours.toFixed(1)}h >= ${settings.emergencyDumpMinAgeHours}h, Queue: ${queueAhead}, Clearance: ${clearanceTimeHours.toFixed(1)}h. Highest bid: ${highestBid.toFixed(2)} GJN, Loss: ${emergencyLoss.toFixed(2)} GJN (${((emergencyLoss / effectiveBasis) * 100).toFixed(1)}% <= ${settings.emergencyDumpMaxLossPercent}%).`);
                 }
 
                 // Stage 4: Dead Stock Auto-Clearance (Prolonged Stale Inventory Escalation)
@@ -350,9 +372,12 @@ const checkStandingOrders = async () => {
             // CRITICAL SAFEGUARD:
             // If an item is NOT in liquidation / stop-loss:
             // 1. If trueBasis is known, check that (netIncome - basis >= effectiveMinProfit).
-            // 2. If trueBasis is UNKNOWN (undefined), REFUSE to undercut to prevent accidental losses on unboxed/external items!
+            // 2. If trueBasis is UNKNOWN, check effectiveBasis / hold timeout.
             const basisUnprofitable = (!isLiquidated && !isSoftStopLoss && !isEmergencyDump)
-                ? (trueBasis !== undefined ? (targetUndercutPrice * 0.85 - trueBasis < effectiveMinProfit) : true)
+                ? (trueBasis !== undefined
+                    ? (targetUndercutPrice * 0.85 - trueBasis < effectiveMinProfit)
+                    : (isHoldTimedOut ? false : (targetUndercutPrice * 0.85 - effectiveBasis < effectiveMinProfit))
+                  )
                 : false;
 
             const unprofitable = basisUnprofitable || targetSellPrice <= 0;

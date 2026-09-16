@@ -27,10 +27,51 @@ const Core = (props: Props) => {
   const [lastUpdated, setLastUpdated] = useState<string>('');
   const [showUpdatedBadge, setShowUpdatedBadge] = useState<boolean>(false);
   const [filterLiquidatedOnly, setFilterLiquidatedOnly] = useState<boolean>(false);
+  const [filterIgnoredOnly, setFilterIgnoredOnly] = useState<boolean>(false);
+  const [enableBuying, setEnableBuying] = useState<boolean>(true);
+  const [enableSelling, setEnableSelling] = useState<boolean>(true);
+
+  const fetchBotSwitches = async (): Promise<void> => {
+    try {
+      const res = await axios.get('/settings');
+      if (res.data?.settings) {
+        if (typeof res.data.settings.enableBuying === 'boolean') {
+          setEnableBuying(res.data.settings.enableBuying);
+        }
+        if (typeof res.data.settings.enableSelling === 'boolean') {
+          setEnableSelling(res.data.settings.enableSelling);
+        }
+      }
+    } catch (e) {
+      console.error("Error fetching bot switches", e);
+    }
+  };
+
+  const handleToggleBuying = async () => {
+    const nextVal = !enableBuying;
+    setEnableBuying(nextVal);
+    try {
+      await axios.post('/settings', { enableBuying: nextVal });
+    } catch (e) {
+      console.error("Failed to update buying switch", e);
+      setEnableBuying(!nextVal);
+    }
+  };
+
+  const handleToggleSelling = async () => {
+    const nextVal = !enableSelling;
+    setEnableSelling(nextVal);
+    try {
+      await axios.post('/settings', { enableSelling: nextVal });
+    } catch (e) {
+      console.error("Failed to update selling switch", e);
+      setEnableSelling(!nextVal);
+    }
+  };
 
   const getItems = async (): Promise<void> => {
     // Add cache-busting timestamp to prevent browser from caching stale /orders responses
-    const catQuery = filterLiquidatedOnly ? '' : (category ? `category=${category}&` : '');
+    const catQuery = (filterLiquidatedOnly || filterIgnoredOnly) ? '' : (category ? `category=${category}&` : '');
     axios.get(`/orders?${catQuery}_t=${Date.now()}`)
       .then(res => {
         console.log(res);
@@ -54,16 +95,18 @@ const Core = (props: Props) => {
 
 
   useEffect(() => {
-    console.log("cat:", category, "filterLiquidatedOnly:", filterLiquidatedOnly);
+    console.log("cat:", category, "filterLiquidatedOnly:", filterLiquidatedOnly, "filterIgnoredOnly:", filterIgnoredOnly);
     getItems();
+    fetchBotSwitches();
 
-    // Auto-sync totals & profits every 10 seconds so profits appear automatically
+    // Auto-sync totals, profits & switches every 10 seconds so state stays synchronized
     const pollInterval = setInterval(() => {
       getItems();
+      fetchBotSwitches();
     }, 10000);
 
     return () => clearInterval(pollInterval);
-  }, [category, filterLiquidatedOnly])
+  }, [category, filterLiquidatedOnly, filterIgnoredOnly])
 
 
   useEffect(() => {
@@ -101,6 +144,9 @@ const Core = (props: Props) => {
 
   const filteredItems = useMemo(() => {
     return items.filter(item => {
+      if (filterIgnoredOnly) {
+        return !!item.isIgnored;
+      }
       if (filterLiquidatedOnly) {
         // When in liquidation filter mode, display ALL liquidated items regardless of volume/profit!
         return !!item.isLiquidated;
@@ -116,7 +162,7 @@ const Core = (props: Props) => {
       if (!a.isLiquidated && b.isLiquidated) return 1;
       return b.profit - a.profit;
     });
-  }, [items, minVolume, minProfit, filterLiquidatedOnly])
+  }, [items, minVolume, minProfit, filterLiquidatedOnly, filterIgnoredOnly]);
 
   return (
     <div className=''>
@@ -164,6 +210,37 @@ const Core = (props: Props) => {
           <span>⚙️</span> Bot Ayarları
         </button>
 
+        {/* Master Buy & Sell Switches */}
+        <div className="flex items-center gap-2 bg-[#12161f] p-1.5 rounded-xl border border-[#2e3646] shadow-md">
+          <button
+            type="button"
+            onClick={handleToggleBuying}
+            className={`px-3 py-2.5 rounded-lg text-xs font-black uppercase transition flex items-center gap-1.5 shadow active:scale-95 ${
+              enableBuying
+                ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40 border border-emerald-400/40'
+                : 'bg-red-600 hover:bg-red-500 text-white shadow-red-950/40 border border-red-400/40 animate-pulse'
+            }`}
+            title={enableBuying ? "Alış botu aktif. Durdurmak için tıklayın." : "Alış botu DURDURULDU. Başlatmak için tıklayın."}
+          >
+            <span>🛒</span>
+            <span>Alış: {enableBuying ? 'AÇIK' : 'KAPALI'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleToggleSelling}
+            className={`px-3 py-2.5 rounded-lg text-xs font-black uppercase transition flex items-center gap-1.5 shadow active:scale-95 ${
+              enableSelling
+                ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40 border border-emerald-400/40'
+                : 'bg-red-600 hover:bg-red-500 text-white shadow-red-950/40 border border-red-400/40 animate-pulse'
+            }`}
+            title={enableSelling ? "Satış botu aktif. Durdurmak için tıklayın." : "Satış botu DURDURULDU. Başlatmak için tıklayın."}
+          >
+            <span>🏷️</span>
+            <span>Satış: {enableSelling ? 'AÇIK' : 'KAPALI'}</span>
+          </button>
+        </div>
+
         {/* min hacim */}
         <div className="flex flex-col">
           <label htmlFor="">Min Volume</label>
@@ -191,7 +268,10 @@ const Core = (props: Props) => {
         <div className='flex flex-col justify-end'>
           <button
             type="button"
-            onClick={() => setFilterLiquidatedOnly(!filterLiquidatedOnly)}
+            onClick={() => {
+              setFilterLiquidatedOnly(!filterLiquidatedOnly);
+              if (!filterLiquidatedOnly) setFilterIgnoredOnly(false);
+            }}
             className={`px-3 py-2.5 rounded-lg font-bold text-xs transition flex items-center gap-1.5 shadow ${
               filterLiquidatedOnly
                 ? 'bg-red-600 hover:bg-red-500 text-white border-2 border-red-300'
@@ -201,6 +281,25 @@ const Core = (props: Props) => {
           >
             <span>🔥</span>
             <span>Likidasyon ({items.filter(i => i.isLiquidated).length})</span>
+          </button>
+        </div>
+
+        <div className='flex flex-col justify-end'>
+          <button
+            type="button"
+            onClick={() => {
+              setFilterIgnoredOnly(!filterIgnoredOnly);
+              if (!filterIgnoredOnly) setFilterLiquidatedOnly(false);
+            }}
+            className={`px-3 py-2.5 rounded-lg font-bold text-xs transition flex items-center gap-1.5 shadow ${
+              filterIgnoredOnly
+                ? 'bg-purple-700 hover:bg-purple-600 text-white border-2 border-purple-300'
+                : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-600'
+            }`}
+            title="Sadece yoksayılan (kara listedeki) eşyaları filtreler"
+          >
+            <span>🚫</span>
+            <span>Yoksayılanlar ({items.filter(i => i.isIgnored).length})</span>
           </button>
         </div>
 

@@ -77,6 +77,11 @@ db.exec(`
     market_name TEXT PRIMARY KEY,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS IgnoredItems (
+    market_name TEXT PRIMARY KEY,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // Safe migrations for existing databases

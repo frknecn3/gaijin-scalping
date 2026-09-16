@@ -1,6 +1,7 @@
 import { post, getInvAssets } from './helpers.js';
 import db from '../db/database.js';
 import { addBasis, consumeBasis, getAvailableBases } from './basisTracker.js';
+import { isItemLiquidated, removeLiquidateItem, getLiquidateItems } from './settingsManager.js';
 
 function isCancelled(orderId: number | string): boolean {
     const row = db.prepare('SELECT id FROM CancelledOrders WHERE id = ?').get(orderId);
@@ -102,6 +103,15 @@ export async function syncUserHistory(): Promise<void> {
                         basis,
                         profit
                     });
+
+                    // Automatically turn off liquidation for this item once sold
+                    if (isItemLiquidated(ev.hashname)) {
+                        const remainingSell = db.prepare("SELECT count(*) as count FROM Orders WHERE market = ? AND type = 'SELL' AND id != ?").get(ev.hashname, ev.orderId) as { count: number } | undefined;
+                        if (!remainingSell || remainingSell.count === 0) {
+                            removeLiquidateItem(ev.hashname);
+                            console.log(`[LIQUIDATE] 🎯 Liquidated item ${ev.hashname} was successfully SOLD! Automatically turned off liquidation mode.`);
+                        }
+                    }
                 }
             }
 
@@ -182,6 +192,22 @@ export async function syncOpenOrders(): Promise<GaijinOpenOrder[]> {
                 }
             }
         })();
+
+        // Automatically turn off liquidation for any market that no longer has active SELL orders
+        try {
+            const activeLiquidateMarkets = getLiquidateItems();
+            if (activeLiquidateMarkets.length > 0) {
+                const openSellMarkets = new Set(fetchedOrders.filter(o => o.type === 'SELL').map(o => o.market));
+                for (const m of activeLiquidateMarkets) {
+                    if (!openSellMarkets.has(m)) {
+                        removeLiquidateItem(m);
+                        console.log(`[LIQUIDATE] 🧹 Automatically turned off liquidation for ${m} as it has no active SELL orders.`);
+                    }
+                }
+            }
+        } catch (liqErr) {
+            console.error("[SYNC-ORDERS] Error auto-clearing liquidation items:", liqErr);
+        }
 
         // Reconcile Basis with ACTUAL inventory from Gaijin
         // If an item is NOT in the real Gaijin inventory, it MUST NOT exist in Basis!

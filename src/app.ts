@@ -9,7 +9,7 @@ import { performNightlyAudit } from './modules/audit.js';
 import db from './db/database.js';
 import snipeBuyRouter from "./routers/snipeBuy.route.js";
 import { startGuardLoop } from './guard.js';
-import { getBotSettings, updateBotSettings, isItemLiquidated, addLiquidateItem, removeLiquidateItem, getLiquidateItems } from './helpers/settingsManager.js';
+import { getBotSettings, updateBotSettings, isItemLiquidated, addLiquidateItem, removeLiquidateItem, getLiquidateItems, isItemIgnored, addIgnoredItem, removeIgnoredItem, getIgnoredItems } from './helpers/settingsManager.js';
 import { syncOpenOrders } from './helpers/orderSync.js';
 import { getAvailableBases } from './helpers/basisTracker.js';
 dotenv.config();
@@ -81,6 +81,67 @@ app.post('/api/liquidate/toggle', (req, res) => {
                 message: `${market} LİKİDASYON moduna alındı! (Guard kârsızlığa bakılmaksızın en ucuz satıcıya undercut atacaktır).`
             });
         }
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e?.message });
+    }
+});
+
+app.get('/api/ignored', (req, res) => {
+    try {
+        const items = getIgnoredItems();
+        res.status(200).json({ success: true, items });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e?.message });
+    }
+});
+
+app.post('/api/ignored/toggle', (req, res) => {
+    try {
+        const { market } = req.body;
+        if (!market) {
+            return res.status(400).json({ success: false, error: "Market name required" });
+        }
+
+        const currentlyIgnored = isItemIgnored(market);
+        if (currentlyIgnored) {
+            removeIgnoredItem(market);
+            res.status(200).json({
+                success: true,
+                ignored: false,
+                market,
+                message: `${market} yoksayılanlar listesinden çıkarıldı.`
+            });
+        } else {
+            addIgnoredItem(market);
+            res.status(200).json({
+                success: true,
+                ignored: true,
+                market,
+                message: `${market} yoksayılanlar listesine eklendi! (Bot bu ürünü asla satın almayacaktır).`
+            });
+        }
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e?.message });
+    }
+});
+
+app.post('/api/ignored/add', (req, res) => {
+    try {
+        const { market } = req.body;
+        if (!market) return res.status(400).json({ success: false, error: "Market required" });
+        addIgnoredItem(market);
+        res.status(200).json({ success: true, ignored: true, market });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e?.message });
+    }
+});
+
+app.post('/api/ignored/remove', (req, res) => {
+    try {
+        const { market } = req.body;
+        if (!market) return res.status(400).json({ success: false, error: "Market required" });
+        removeIgnoredItem(market);
+        res.status(200).json({ success: true, ignored: false, market });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e?.message });
     }
@@ -594,8 +655,9 @@ app.get('/orders', async (req, res) => {
         });
     }
 
-    // 3. Map live active orders & liquidation state to items
+    // 3. Map live active orders, liquidation & ignored state to items
     const liquidatedSet = new Set(getLiquidateItems());
+    const ignoredSet = new Set(getIgnoredItems());
     const itemMarketSet = new Set(items.map((i: any) => i.hash_name));
 
     const findItemInDb = (hashName: string) => {
@@ -610,6 +672,7 @@ app.get('/orders', async (req, res) => {
         return {
             ...item,
             isLiquidated: liquidatedSet.has(item.hash_name),
+            isIgnored: ignoredSet.has(item.hash_name),
             active_orders: liveOrders.filter((o: any) => o.market === item.hash_name)
         };
     });
@@ -623,6 +686,7 @@ app.get('/orders', async (req, res) => {
                 items.unshift({
                     ...dbItem,
                     isLiquidated: liquidatedSet.has(order.market),
+                    isIgnored: ignoredSet.has(order.market),
                     active_orders: liveOrders.filter((o: any) => o.market === order.market)
                 });
             } else {
@@ -636,6 +700,7 @@ app.get('/orders', async (req, res) => {
                     liquidityScore: 0,
                     tags: [],
                     isLiquidated: liquidatedSet.has(order.market),
+                    isIgnored: ignoredSet.has(order.market),
                     active_orders: liveOrders.filter((o: any) => o.market === order.market)
                 });
             }
@@ -652,6 +717,7 @@ app.get('/orders', async (req, res) => {
                 items.unshift({
                     ...dbItem,
                     isLiquidated: true,
+                    isIgnored: ignoredSet.has(marketName),
                     active_orders: active
                 });
             } else {
@@ -665,6 +731,7 @@ app.get('/orders', async (req, res) => {
                     liquidityScore: 0,
                     tags: [],
                     isLiquidated: true,
+                    isIgnored: ignoredSet.has(marketName),
                     active_orders: active
                 });
             }

@@ -44,6 +44,8 @@ interface BotSettings {
     emergencyDumpMaxLossPercent: number;
     ultraLiquidVolumeThreshold: number;
     ultraLiquidMaxExposure: number;
+    enableBuying?: boolean;
+    enableSelling?: boolean;
 }
 
 interface SettingsModalProps {
@@ -78,16 +80,57 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         emergencyDumpMinAgeHours: 18.0,
         emergencyDumpMaxLossPercent: 15.0,
         ultraLiquidVolumeThreshold: 100,
-        ultraLiquidMaxExposure: 2
+        ultraLiquidMaxExposure: 2,
+        enableBuying: true,
+        enableSelling: true
     });
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [statusMsg, setStatusMsg] = useState<{ text: string, error?: boolean } | null>(null);
+    const [ignoredItems, setIgnoredItems] = useState<string[]>([]);
+    const [newIgnoreInput, setNewIgnoreInput] = useState<string>('');
+
+    const fetchIgnored = async () => {
+        try {
+            const res = await axios.get('/api/ignored');
+            if (res.data?.items) {
+                setIgnoredItems(res.data.items);
+            }
+        } catch (err) {
+            console.error("Failed to load ignored items", err);
+        }
+    };
+
+    const handleAddIgnore = async () => {
+        const trimmed = newIgnoreInput.trim();
+        if (!trimmed) return;
+        try {
+            const res = await axios.post('/api/ignored/add', { market: trimmed });
+            if (res.data?.success) {
+                setNewIgnoreInput('');
+                fetchIgnored();
+            }
+        } catch (err) {
+            console.error("Failed to add ignored item", err);
+        }
+    };
+
+    const handleRemoveIgnore = async (market: string) => {
+        try {
+            const res = await axios.post('/api/ignored/remove', { market });
+            if (res.data?.success) {
+                fetchIgnored();
+            }
+        } catch (err) {
+            console.error("Failed to remove ignored item", err);
+        }
+    };
 
     useEffect(() => {
         if (isOpen) {
             setLoading(true);
             setStatusMsg(null);
+            fetchIgnored();
             axios.get('/settings')
                 .then(res => {
                     if (res.data?.settings) {
@@ -203,6 +246,121 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                     {statusMsg.text}
                                 </div>
                             )}
+
+                            {/* Section: Master Operation Switches */}
+                            <div className="bg-[#12161f] p-4 rounded-xl border border-cyan-500/30 space-y-3 bg-gradient-to-r from-cyan-950/20 to-blue-950/20">
+                                <h3 className="text-sm font-semibold uppercase tracking-wider text-cyan-400 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                                    <span className="flex items-center gap-2">🕹️ Bot Çalışma Modülleri (Master Switches)</span>
+                                    <span className="text-[11px] font-normal normal-case text-gray-400">Alış ve Satış işlemlerini tek tıkla durdurup başlatın</span>
+                                </h3>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                                    {/* Buying Toggle */}
+                                    <div className={`p-3.5 rounded-xl border transition flex items-center justify-between gap-2 ${settings.enableBuying ? 'bg-emerald-950/30 border-emerald-500/40' : 'bg-red-950/30 border-red-500/40'}`}>
+                                        <div>
+                                            <div className="flex items-center gap-2 font-bold text-sm text-white">
+                                                <span>🛒</span>
+                                                <span>Otomatik Alış (Scanner)</span>
+                                            </div>
+                                            <div className="text-[11px] text-gray-400 mt-0.5">
+                                                {settings.enableBuying ? "Yeni BUY emirleri açılıyor" : "Alış işlemleri TAMAMEN DURDURULDU"}
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSettings({ ...settings, enableBuying: !settings.enableBuying })}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition shadow flex-shrink-0 ${
+                                                settings.enableBuying
+                                                    ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/20'
+                                                    : 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/20'
+                                            }`}
+                                        >
+                                            {settings.enableBuying ? 'AÇIK (ON)' : 'KAPALI (OFF)'}
+                                        </button>
+                                    </div>
+
+                                    {/* Selling Toggle */}
+                                    <div className={`p-3.5 rounded-xl border transition flex items-center justify-between gap-2 ${settings.enableSelling ? 'bg-emerald-950/30 border-emerald-500/40' : 'bg-red-950/30 border-red-500/40'}`}>
+                                        <div>
+                                            <div className="flex items-center gap-2 font-bold text-sm text-white">
+                                                <span>🏷️</span>
+                                                <span>Otomatik Satış (Guard)</span>
+                                            </div>
+                                            <div className="text-[11px] text-gray-400 mt-0.5">
+                                                {settings.enableSelling ? "SELL emirleri ve undercut devrede" : "Satış güncellemeleri TAMAMEN DURDURULDU"}
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSettings({ ...settings, enableSelling: !settings.enableSelling })}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition shadow flex-shrink-0 ${
+                                                settings.enableSelling
+                                                    ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/20'
+                                                    : 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/20'
+                                            }`}
+                                        >
+                                            {settings.enableSelling ? 'AÇIK (ON)' : 'KAPALI (OFF)'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Section: Ignored Items / Blacklist */}
+                            <div className="bg-[#12161f] p-4 rounded-xl border border-purple-500/30 space-y-3">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                                    <h3 className="text-sm font-semibold uppercase tracking-wider text-purple-400 flex items-center gap-2">
+                                        🚫 Yoksayılan Ürünler (Kara Liste - {ignoredItems.length})
+                                    </h3>
+                                    <span className="text-[11px] text-gray-400">
+                                        Bot bu listedeki ürünleri Scanner taramalarında satın almaz
+                                    </span>
+                                </div>
+
+                                {/* Add input */}
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={newIgnoreInput}
+                                        onChange={e => setNewIgnoreInput(e.target.value)}
+                                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddIgnore(); }}}
+                                        placeholder="Ürün market hash adı ekle (Örn: 'Trophy 6' ya da tam adı)..."
+                                        className="flex-1 bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={handleAddIgnore}
+                                        className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-bold transition shadow"
+                                    >
+                                        + Ekle
+                                    </button>
+                                </div>
+
+                                {/* Ignored list */}
+                                <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+                                    {ignoredItems.length === 0 ? (
+                                        <div className="text-xs text-gray-500 py-3 text-center italic bg-[#181c24] rounded-lg border border-gray-800">
+                                            Henüz yoksayılan ürün yok. Kartlardaki "🚫 Yoksay" butonuna basarak veya yukarıdan adını yazarak ekleyebilirsiniz.
+                                        </div>
+                                    ) : (
+                                        ignoredItems.map(market => (
+                                            <div
+                                                key={market}
+                                                className="flex items-center justify-between bg-[#181c24] border border-purple-900/40 rounded-lg px-3 py-2 text-xs text-gray-300 hover:border-purple-500/50 transition"
+                                            >
+                                                <span className="font-mono text-gray-200 truncate mr-2" title={market}>{market}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveIgnore(market)}
+                                                    className="text-red-400 hover:text-red-300 hover:bg-red-500/10 px-2 py-1 rounded text-xs transition font-semibold"
+                                                    title="Listeden çıkar"
+                                                >
+                                                    ✕ Kaldır
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
 
                             {/* Section: Guard Settings */}
                             <div className="bg-[#12161f] p-4 rounded-xl border border-[#262c3b] space-y-4">

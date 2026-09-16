@@ -18,7 +18,8 @@ export type HashType = {
   tags: string[],
   active_orders?: { type: string, localPrice: number, market: string }[],
   highestOfLast10?: number,
-  isLiquidated?: boolean
+  isLiquidated?: boolean,
+  isIgnored?: boolean
 }
 
 export type TransactionType = {

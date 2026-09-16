@@ -2,13 +2,18 @@ import db from '../db/database.js';
 import { canBuyItem, acquireBuyLock, releaseBuyLock, isBuyLocked } from './riskManager.js';
 import { post, marketPost, getPairStat, calculateLiquidityScore } from '../helpers/helpers.js';
 import { syncOpenOrders } from '../helpers/orderSync.js';
-import { getBotSettings, isItemLiquidated, getMatchingTierRule } from '../helpers/settingsManager.js';
+import { getBotSettings, isItemLiquidated, isItemIgnored, getMatchingTierRule } from '../helpers/settingsManager.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
 export async function scanMarketForOpportunities() {
-    console.log("[SCANNER] Starting market scan...");
     const settings = getBotSettings();
+    if (!settings.enableBuying) {
+        console.log("[SCANNER] ⏸️ Autonomous BUY orders are currently TURNED OFF (enableBuying = false). Skipping purchase scan.");
+        return;
+    }
+
+    console.log("[SCANNER] Starting market scan...");
     const MIN_PROFIT = settings.scannerMinProfit;
     const MIN_VOLUME = settings.minVolume;
     const MIN_STREAK = settings.minStreak;
@@ -29,6 +34,7 @@ export async function scanMarketForOpportunities() {
     for (const item of parsedItems) {
         // Skip keys or explicitly ignored items
         if (item.tags?.includes('type:key')) continue;
+        if (isItemIgnored(item.hash_name)) continue;
 
         // Skip items we are ALREADY buying (open BUY order exists or active buy lock)
         if (currentlyBuying.has(item.hash_name) || isBuyLocked(item.hash_name)) {

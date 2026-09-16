@@ -28,13 +28,35 @@ const ItemCard = ({ item }: Props) => {
     }
 
     const [isLiquidated, setIsLiquidated] = useState<boolean>(!!item.isLiquidated);
+    const [isIgnored, setIsIgnored] = useState<boolean>(!!item.isIgnored);
     const [isToggling, setIsToggling] = useState<boolean>(false);
+    const [isTogglingIgnore, setIsTogglingIgnore] = useState<boolean>(false);
     const [isDumping, setIsDumping] = useState<boolean>(false);
     const [dumpStatus, setDumpStatus] = useState<string | null>(null);
 
     React.useEffect(() => {
         setIsLiquidated(!!item.isLiquidated);
     }, [item.isLiquidated]);
+
+    React.useEffect(() => {
+        setIsIgnored(!!item.isIgnored);
+    }, [item.isIgnored]);
+
+    const handleToggleIgnore = async (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsTogglingIgnore(true);
+        try {
+            const res = await axios.post('/api/ignored/toggle', { market: item.hash_name });
+            if (res.data?.success) {
+                setIsIgnored(res.data.ignored);
+            }
+        } catch (err: any) {
+            alert(err?.response?.data?.error || "Yoksayma durumu güncellenemedi.");
+        } finally {
+            setIsTogglingIgnore(false);
+        }
+    };
 
     const handleToggleLiquidate = async (e: React.MouseEvent) => {
         e.preventDefault();
@@ -84,11 +106,18 @@ const ItemCard = ({ item }: Props) => {
     const hasSell = sellOrders.length > 0;
 
     return (
-        <a className={`relative border-2 min-h-[300px] rounded-xl pb-5 bg-[${clr}20]`} style={{
-            borderColor: clr,
+        <a className={`relative border-2 min-h-[300px] rounded-xl pb-5 transition-all ${isIgnored ? 'opacity-80 border-purple-500/80 shadow-purple-950/40 shadow-lg' : ''}`} style={{
+            borderColor: isIgnored ? '#a855f7' : clr,
             backgroundColor: clr,
         }}>
             
+            {isIgnored && (
+                <div className="absolute top-2 left-2 bg-purple-900/90 text-purple-200 border border-purple-500 px-2 py-1 rounded text-xs font-black shadow-md z-10 flex items-center gap-1">
+                    <span>🚫</span>
+                    <span>YOKSAYILDI</span>
+                </div>
+            )}
+
             {hasBuy && (
                 <div className="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-bold shadow-md z-10">
                     Buying ({buyOrders.length})
@@ -160,22 +189,39 @@ const ItemCard = ({ item }: Props) => {
                     </span>
                 ) : null}
 
-                {/* Liquidation Controls */}
-                <div className='flex items-center justify-between gap-2 pt-2 border-t border-white/10'>
-                    <button
-                        type="button"
-                        disabled={isToggling}
-                        onClick={handleToggleLiquidate}
-                        className={`text-xs px-2.5 py-1.5 rounded-md font-bold transition flex items-center gap-1.5 shadow ${
-                            isLiquidated
-                                ? 'bg-red-600 hover:bg-red-700 text-white border border-red-400 animate-pulse'
-                                : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-600'
-                        }`}
-                        title={isLiquidated ? "Likidasyon modunu kapat" : "Zararına/maliyete bakılmaksızın en ucuz fiyata undercut atma modu"}
-                    >
-                        <span>🔥</span>
-                        <span>{isLiquidated ? 'Likidasyonda' : 'Likidasyon'}</span>
-                    </button>
+                {/* Liquidation & Ignore Controls */}
+                <div className='flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10'>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                            type="button"
+                            disabled={isToggling}
+                            onClick={handleToggleLiquidate}
+                            className={`text-xs px-2.5 py-1.5 rounded-md font-bold transition flex items-center gap-1 shadow ${
+                                isLiquidated
+                                    ? 'bg-red-600 hover:bg-red-700 text-white border border-red-400 animate-pulse'
+                                    : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-600'
+                            }`}
+                            title={isLiquidated ? "Likidasyon modunu kapat" : "Zararına/maliyete bakılmaksızın en ucuz fiyata undercut atma modu"}
+                        >
+                            <span>🔥</span>
+                            <span>{isLiquidated ? 'Likidasyonda' : 'Likidasyon'}</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            disabled={isTogglingIgnore}
+                            onClick={handleToggleIgnore}
+                            className={`text-xs px-2.5 py-1.5 rounded-md font-bold transition flex items-center gap-1 shadow ${
+                                isIgnored
+                                    ? 'bg-purple-700 hover:bg-purple-800 text-white border border-purple-400'
+                                    : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-600'
+                            }`}
+                            title={isIgnored ? "Bu ürün yoksayılanlar listesinde (bot satın almaz). Listeden çıkarmak için tıklayın." : "Bu ürünü yoksayılanlar listesine ekle (bot satın almaz)"}
+                        >
+                            <span>🚫</span>
+                            <span>{isIgnored ? 'Yoksayıldı' : 'Yoksay'}</span>
+                        </button>
+                    </div>
 
                     {(hasSell || isLiquidated) && (
                         <button
