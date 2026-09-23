@@ -35,3 +35,28 @@ export type TransactionType = {
   timeStr: string;
   dateStr: string;
 };
+
+export type DailySummaryType = {
+  day: string;
+  trades: number;
+  totalProfit: number;
+  totalVolume: number;
+  wins: number;
+  losses: number;
+  winRatePercent: number;
+};
+
+export type TotalsType = {
+  buy: number;
+  sell: number;
+  profit?: number;
+  todayProfit?: number;
+  yesterdayProfit?: number;
+  walletBalance?: number;
+  totalEquity?: number;
+  operatingCapitalTarget?: number;
+  excessEquity?: number;
+  spendableCash?: number;
+  externalSpentGJN?: number;
+  lifetimeTotalCreated?: number;
+};

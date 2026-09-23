@@ -73,6 +73,8 @@ export interface BotSettings {
     ultraLiquidMaxExposure: number;      // Maximum copies allowed for ultra-liquid items (default: 2)
     enableBuying: boolean;               // Master switch for automated BUY orders
     enableSelling: boolean;              // Master switch for automated SELL order updates & undercuts
+    operatingCapitalTarget: number;      // Minimum total capital required to run bot without bottleneck (default: 75.00 GJN)
+    externalSpentGJN: number;            // Total GJN spent externally on Gaijin Store / in-game (default: 116.00 GJN)
 }
 
 const DEFAULT_SETTINGS: BotSettings = {
@@ -103,7 +105,9 @@ const DEFAULT_SETTINGS: BotSettings = {
     ultraLiquidVolumeThreshold: 100,
     ultraLiquidMaxExposure: 2,
     enableBuying: true,
-    enableSelling: true
+    enableSelling: true,
+    operatingCapitalTarget: 75.00,
+    externalSpentGJN: 116.00
 };
 
 export function getBotSettings(): BotSettings {
@@ -147,6 +151,8 @@ export function getBotSettings(): BotSettings {
             ultraLiquidMaxExposure: typeof map.ultraLiquidMaxExposure === 'number' ? map.ultraLiquidMaxExposure : DEFAULT_SETTINGS.ultraLiquidMaxExposure,
             enableBuying: typeof map.enableBuying === 'boolean' ? map.enableBuying : DEFAULT_SETTINGS.enableBuying,
             enableSelling: typeof map.enableSelling === 'boolean' ? map.enableSelling : DEFAULT_SETTINGS.enableSelling,
+            operatingCapitalTarget: typeof map.operatingCapitalTarget === 'number' ? map.operatingCapitalTarget : DEFAULT_SETTINGS.operatingCapitalTarget,
+            externalSpentGJN: typeof map.externalSpentGJN === 'number' ? map.externalSpentGJN : DEFAULT_SETTINGS.externalSpentGJN,
         };
     } catch (e) {
         console.error("[SETTINGS] Error reading settings from DB, using defaults:", e);
@@ -185,6 +191,8 @@ export function updateBotSettings(partial: Partial<BotSettings>): BotSettings {
         ultraLiquidMaxExposure: partial.ultraLiquidMaxExposure !== undefined ? Number(partial.ultraLiquidMaxExposure) : current.ultraLiquidMaxExposure,
         enableBuying: partial.enableBuying !== undefined ? Boolean(partial.enableBuying) : current.enableBuying,
         enableSelling: partial.enableSelling !== undefined ? Boolean(partial.enableSelling) : current.enableSelling,
+        operatingCapitalTarget: partial.operatingCapitalTarget !== undefined ? Number(partial.operatingCapitalTarget) : current.operatingCapitalTarget,
+        externalSpentGJN: partial.externalSpentGJN !== undefined ? Number(partial.externalSpentGJN) : current.externalSpentGJN,
     };
 
     const stmt = db.prepare('INSERT OR REPLACE INTO Settings (key, value) VALUES (?, ?)');

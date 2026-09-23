@@ -749,8 +749,36 @@ app.get('/orders', async (req, res) => {
     const totalProfit = totalProfitQuery.total || 0;
     const todayProfitQuery = db.prepare("SELECT SUM(profit) as today FROM Profits WHERE DATE(timestamp, '+3 hours') = DATE('now', '+3 hours')").get() as { today: number };
     const todayProfit = todayProfitQuery.today || 0;
+    const yesterdayProfitQuery = db.prepare("SELECT SUM(profit) as yesterday FROM Profits WHERE DATE(timestamp, '+3 hours') = DATE('now', '+3 hours', '-1 day')").get() as { yesterday: number };
+    const yesterdayProfit = yesterdayProfitQuery.yesterday || 0;
 
     const walletBalance = await getWalletBalance();
+    const effectiveWallet = walletBalance ?? 0;
+
+    const settings = getBotSettings();
+    const operatingCapitalTarget = settings.operatingCapitalTarget ?? 75.00;
+    const externalSpentGJN = settings.externalSpentGJN ?? 116.00;
+
+    const totalEquity = effectiveWallet + totalBuy + totalSell;
+    const excessEquity = Math.max(0, totalEquity - operatingCapitalTarget);
+    const spendableCash = Math.max(0, Math.min(effectiveWallet, excessEquity));
+    const lifetimeTotalCreated = totalProfit + externalSpentGJN;
+
+    // Daily breakdown for the last 14 days
+    const dailySummary = db.prepare(`
+        SELECT 
+            DATE(timestamp, '+3 hours') as day,
+            COUNT(*) as trades,
+            ROUND(SUM(profit), 2) as totalProfit,
+            ROUND(SUM(sellPrice), 2) as totalVolume,
+            SUM(CASE WHEN profit > 0.0001 THEN 1 ELSE 0 END) as wins,
+            SUM(CASE WHEN profit < -0.0001 THEN 1 ELSE 0 END) as losses,
+            ROUND((CAST(SUM(CASE WHEN profit > 0.0001 THEN 1 ELSE 0 END) AS REAL) / COUNT(*)) * 100, 1) as winRatePercent
+        FROM Profits 
+        GROUP BY day 
+        ORDER BY day DESC
+        LIMIT 14
+    `).all() as any[];
 
     const rawTxs = db.prepare(`
         SELECT 
@@ -795,8 +823,16 @@ app.get('/orders', async (req, res) => {
             sell: totalSell,
             profit: totalProfit,
             todayProfit: todayProfit,
-            walletBalance: walletBalance ?? 0
+            yesterdayProfit: yesterdayProfit,
+            walletBalance: effectiveWallet,
+            totalEquity: totalEquity,
+            operatingCapitalTarget: operatingCapitalTarget,
+            excessEquity: excessEquity,
+            spendableCash: spendableCash,
+            externalSpentGJN: externalSpentGJN,
+            lifetimeTotalCreated: lifetimeTotalCreated
         },
+        dailySummary,
         recentTransactions,
         message: "Ürünler gönderildi."
     });

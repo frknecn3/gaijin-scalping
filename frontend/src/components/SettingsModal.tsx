@@ -46,6 +46,8 @@ interface BotSettings {
     ultraLiquidMaxExposure: number;
     enableBuying?: boolean;
     enableSelling?: boolean;
+    operatingCapitalTarget?: number;
+    externalSpentGJN?: number;
 }
 
 interface SettingsModalProps {
@@ -82,7 +84,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         ultraLiquidVolumeThreshold: 100,
         ultraLiquidMaxExposure: 2,
         enableBuying: true,
-        enableSelling: true
+        enableSelling: true,
+        operatingCapitalTarget: 75.0,
+        externalSpentGJN: 116.0
     });
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -301,6 +305,54 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                         >
                                             {settings.enableSelling ? 'AÇIK (ON)' : 'KAPALI (OFF)'}
                                         </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Section: Financial Capital & Store Spend Settings */}
+                            <div className="bg-[#12161f] p-4 rounded-xl border border-emerald-500/30 space-y-4 bg-gradient-to-r from-emerald-950/20 to-cyan-950/20">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                                    <h3 className="text-sm font-semibold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+                                        💎 Finansal Yönetim & Harcanabilir Bakiye
+                                    </h3>
+                                    <span className="text-[11px] text-gray-400">
+                                        Botu darboğaza sokmadan çekilebilecek nakit bakiye hesaplaması
+                                    </span>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-medium text-emerald-300 mb-1">
+                                            Asgari Çalışma Sermayesi Hedefi (GJN)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="1.0"
+                                            min="20.0"
+                                            value={settings.operatingCapitalTarget ?? 75.0}
+                                            onChange={e => setSettings({ ...settings, operatingCapitalTarget: parseFloat(e.target.value) || 75.0 })}
+                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                                        />
+                                        <span className="text-[11px] text-gray-400 block mt-1">
+                                            Botun tam kapasiteyle (BUY + SELL + Tampon) çalışması için gereken asgari rezerv (Örn: 75 GJN). Üzerindeki tüm portföy değeri "Harcanabilir Bakiye" sayılır.
+                                        </span>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-medium text-cyan-300 mb-1">
+                                            Gaijin Store & Oyun İçi Harcamalar (GJN)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.5"
+                                            min="0"
+                                            value={settings.externalSpentGJN ?? 116.0}
+                                            onChange={e => setSettings({ ...settings, externalSpentGJN: parseFloat(e.target.value) || 0 })}
+                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500"
+                                        />
+                                        <span className="text-[11px] text-gray-400 block mt-1">
+                                            Botun ürettiği kârla Gaijin Store'dan aldığınız paket, Golden Eagles ve araç harcamaları (Örn: 116 GJN). Toplam üretilen net değere dahil edilir.
+                                        </span>
                                     </div>
                                 </div>
                             </div>

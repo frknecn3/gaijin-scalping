@@ -1,6 +1,6 @@
 import axios from 'axios';
 import React, { useEffect, useMemo, useState } from 'react'
-import type { HashType, TransactionType } from '../utils/types';
+import type { HashType, TransactionType, TotalsType, DailySummaryType } from '../utils/types';
 import ItemCard from './ItemCard';
 import SettingsModal from './SettingsModal';
 
@@ -19,7 +19,22 @@ const Core = (props: Props) => {
   const [isRenewingOrders, setIsRenewingOrders] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   const [category, setCategory] = useState('')
-  const [totals, setTotals] = useState<{buy: number, sell: number, profit?: number, todayProfit?: number, walletBalance?: number}>({buy: 0, sell: 0, profit: 0, todayProfit: 0, walletBalance: 0});
+  const [totals, setTotals] = useState<TotalsType>({
+    buy: 0,
+    sell: 0,
+    profit: 0,
+    todayProfit: 0,
+    yesterdayProfit: 0,
+    walletBalance: 0,
+    totalEquity: 0,
+    operatingCapitalTarget: 75.0,
+    excessEquity: 0,
+    spendableCash: 0,
+    externalSpentGJN: 116.0,
+    lifetimeTotalCreated: 0
+  });
+  const [dailySummary, setDailySummary] = useState<DailySummaryType[]>([]);
+  const [isDailyModalOpen, setIsDailyModalOpen] = useState<boolean>(false);
   const [recentTransactions, setRecentTransactions] = useState<TransactionType[]>([]);
   const [txCount, setTxCount] = useState<number>(5);
   const [showTransactions, setShowTransactions] = useState<boolean>(true);
@@ -75,7 +90,12 @@ const Core = (props: Props) => {
     axios.get(`/orders?${catQuery}_t=${Date.now()}`)
       .then(res => {
         console.log(res);
-        setTotals(res.data.totals || {buy: 0, sell: 0, walletBalance: 0});
+        if (res.data.totals) {
+          setTotals(res.data.totals);
+        }
+        if (res.data.dailySummary) {
+          setDailySummary(res.data.dailySummary);
+        }
         if (res.data.recentTransactions) {
           setRecentTransactions(res.data.recentTransactions);
         }
@@ -303,46 +323,83 @@ const Core = (props: Props) => {
           </button>
         </div>
 
-        <div className="flex flex-col ml-auto bg-gray-800 p-3 rounded-lg border border-gray-700 shadow-md">
-          <div className="text-xs text-gray-400 font-bold uppercase mb-1">Total Invested</div>
-          <div className="flex gap-4">
-            <span className="text-blue-400 font-semibold" title="Total active BUY orders">BUY: {totals.buy.toFixed(2)} GJN</span>
-            <span className="text-red-400 font-semibold" title="Total active SELL orders (x0.85)">SELL: {totals.sell.toFixed(2)} GJN</span>
-            <span className="text-white font-bold ml-2">TOTAL: {(totals.buy + totals.sell).toFixed(2)} GJN</span>
-          </div>
-
-          <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-700/70 text-xs">
-            <span className="text-gray-400 font-bold uppercase flex items-center gap-1.5" title="Gaijin hesabındaki anlık nakit bakiye">
-              <span>🏦</span> Cash in Bank:
-            </span>
-            <span className="text-emerald-400 font-extrabold text-sm tracking-wide">
-              {(totals.walletBalance ?? 0).toFixed(2)} GJN
+        <div className="flex flex-col ml-auto bg-[#181d28] p-3.5 rounded-xl border border-gray-700/80 shadow-xl min-w-[320px]">
+          {/* Toplam Portföy Varlığı */}
+          <div className="flex items-center justify-between text-xs text-gray-400 font-bold uppercase mb-1">
+            <span>Toplam Portföy (Total Equity)</span>
+            <span className="font-mono text-cyan-400 font-extrabold text-sm">
+              {(totals.totalEquity ?? (totals.buy + totals.sell + (totals.walletBalance ?? 0))).toFixed(2)} GJN
             </span>
           </div>
 
-          <div className="text-xs text-gray-400 font-bold uppercase mt-2 mb-1 flex items-center justify-between">
-            <span>Realized Profit</span>
-            {lastUpdated && (
-              <span className="text-[10px] text-gray-400 lowercase font-mono">
-                🕒 {lastUpdated}
-              </span>
-            )}
+          <div className="flex gap-3 text-[11px] font-mono text-gray-400 justify-between bg-black/30 px-2.5 py-1 rounded border border-gray-800">
+            <span className="text-blue-400" title="Aktif BUY emirlerinde kilitli tutar">BUY: {totals.buy.toFixed(2)}</span>
+            <span className="text-red-400" title="Aktif SELL envanter net tutarı (x0.85)">SELL: {totals.sell.toFixed(2)}</span>
+            <span className="text-emerald-400 font-bold" title="Kasadaki anlık nakit (Cash in Bank)">KASA: {(totals.walletBalance ?? 0).toFixed(2)}</span>
           </div>
-          <div className="flex gap-3 items-center justify-between">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-emerald-400 font-extrabold text-sm" title="Bugün gerçekleşen satışlardan kazanılan net kâr">
-                <span className="text-xs text-gray-400 font-normal">Bugün: </span>+{totals.todayProfit?.toFixed(2) || "0.00"} GJN
+
+          {/* HARCANABİLİR BAKİYE (SAFE-TO-SPEND) HIGHLIGHT CARD */}
+          <div className={`mt-2.5 p-2 rounded-lg border flex flex-col gap-1 transition ${
+            (totals.excessEquity ?? 0) > 0
+              ? 'bg-gradient-to-r from-emerald-950/60 via-teal-950/40 to-emerald-950/60 border-emerald-500/50 shadow-lg shadow-emerald-950/40'
+              : 'bg-amber-950/20 border-amber-600/30'
+          }`}>
+            <div className="flex items-center justify-between text-xs font-bold">
+              <span className="flex items-center gap-1.5 text-gray-200">
+                <span>💎</span>
+                <span>Harcanabilir Bakiye:</span>
               </span>
-              <span className="text-gray-500 font-bold">|</span>
-              <span className="text-gray-300 font-semibold text-xs" title="Tüm zamanlar toplam net kâr">
-                <span className="text-gray-400 font-normal">Toplam: </span>+{totals.profit?.toFixed(2) || "0.00"} GJN
+              <span className={`font-mono text-sm font-black tracking-wide ${
+                (totals.excessEquity ?? 0) > 0 ? 'text-emerald-300' : 'text-amber-400'
+              }`}>
+                {(totals.excessEquity ?? 0) > 0
+                  ? `+${totals.excessEquity?.toFixed(2)} GJN`
+                  : '0.00 GJN'}
               </span>
             </div>
-            {showUpdatedBadge && (
-              <span className="text-xs font-bold text-emerald-300 bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 rounded animate-pulse">
-                ✓ Güncellendi
+
+            <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono">
+              <span>Hedef Rezerv: {totals.operatingCapitalTarget ?? 75.0} GJN</span>
+              <span className="text-gray-300">
+                Çekilebilir Nakit: <strong className="text-emerald-300 font-bold">{(totals.spendableCash ?? 0).toFixed(2)} GJN</strong>
               </span>
-            )}
+            </div>
+          </div>
+
+          {/* KÂR DETAYLARI: Bugün, Dün, Toplam, Store Harcaması */}
+          <div className="mt-2.5 pt-2 border-t border-gray-700/60 flex flex-col gap-1.5">
+            <div className="text-xs text-gray-400 font-bold uppercase flex items-center justify-between">
+              <span>Realized Profits</span>
+              <button
+                type="button"
+                onClick={() => setIsDailyModalOpen(true)}
+                className="text-[11px] text-cyan-400 hover:text-cyan-300 hover:underline flex items-center gap-1 font-semibold transition"
+                title="Son 14 günün gün gün kâr ve işlem dökümü"
+              >
+                <span>📅 Günlük Döküm</span>
+                <span>↗</span>
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between text-xs flex-wrap gap-1 font-mono">
+              <span className="text-emerald-400 font-extrabold" title="Bugün gerçekleşen satış kârı">
+                <span className="text-[11px] text-gray-400 font-normal">Bugün: </span>+{totals.todayProfit?.toFixed(2) || "0.00"}
+              </span>
+              <span className="text-gray-600 font-bold">|</span>
+              <span className="text-teal-400 font-semibold text-[11px]" title="Dünün satış kârı">
+                <span className="text-gray-400 font-normal">Dün: </span>+{totals.yesterdayProfit?.toFixed(2) || "0.00"}
+              </span>
+              <span className="text-gray-600 font-bold">|</span>
+              <span className="text-gray-300 font-semibold text-[11px]" title="Pazarda kaydedilen tüm zamanlar kârı">
+                <span className="text-gray-400 font-normal">Pazar: </span>+{totals.profit?.toFixed(2) || "0.00"}
+              </span>
+            </div>
+
+            {/* Kümülatif Üretilen Değer & Store Harcaması */}
+            <div className="flex items-center justify-between text-[11px] bg-[#121620] px-2 py-1 rounded border border-gray-800 text-gray-400 font-mono mt-0.5">
+              <span title="Gaijin Store'dan satın aldığınız paket/GE harcaması">Store Harcaması: <strong className="text-amber-400 font-bold">{totals.externalSpentGJN?.toFixed(2) || "116.00"} GJN</strong></span>
+              <span title="Pazar Kârı + Store Harcamaları toplamı">Üretilen Değer: <strong className="text-cyan-300 font-bold">+{totals.lifetimeTotalCreated?.toFixed(2) || (Number(totals.profit || 0) + 116).toFixed(2)} GJN</strong></span>
+            </div>
           </div>
 
           {props.onNavigateToOperations && (
@@ -524,6 +581,97 @@ const Core = (props: Props) => {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
       />
+
+      {/* Daily Profits Breakdown Modal */}
+      {isDailyModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-[#181c24] border border-[#2e3646] rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden text-gray-200">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#2e3646] bg-[#1c222c]">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">📅</span>
+                <div>
+                  <h2 className="text-lg font-bold text-white tracking-wide">Günlük Kâr Geçmişi (Son 14 Gün)</h2>
+                  <p className="text-xs text-gray-400">Piyasa işlemlerinizin gün gün net kâr, hacim ve başarı oranları</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsDailyModalOpen(false)}
+                className="text-gray-400 hover:text-white hover:bg-white/10 rounded-lg p-2 transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Table */}
+            <div className="p-6 max-h-[70vh] overflow-y-auto">
+              {dailySummary.length === 0 ? (
+                <div className="text-center py-10 text-gray-500 italic">
+                  Henüz kaydedilmiş günlük işlem verisi bulunmuyor.
+                </div>
+              ) : (
+                <div className="border border-gray-800 rounded-xl overflow-hidden shadow-inner">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#12161f] border-b border-gray-800 text-gray-400 font-bold uppercase tracking-wider text-[11px]">
+                      <tr>
+                        <th className="py-3 px-4">Tarih</th>
+                        <th className="py-3 px-3">İşlem</th>
+                        <th className="py-3 px-3">Hacim</th>
+                        <th className="py-3 px-3">Kazanma</th>
+                        <th className="py-3 px-4 text-right">Net Kâr</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-800/60 bg-[#161a22]">
+                      {dailySummary.map((d, idx) => (
+                        <tr key={d.day} className={`hover:bg-gray-800/40 transition ${idx === 0 ? 'bg-emerald-950/20' : ''}`}>
+                          <td className="py-3 px-4 font-mono font-medium text-gray-200">
+                            {d.day} {idx === 0 ? <span className="ml-1 text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/30">Bugün</span> : ''}
+                          </td>
+                          <td className="py-3 px-3 text-gray-300 font-mono">
+                            {d.trades} işlem
+                          </td>
+                          <td className="py-3 px-3 font-mono text-gray-400">
+                            {d.totalVolume.toFixed(2)} GJN
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className="text-emerald-400 font-semibold font-mono">
+                              %{d.winRatePercent.toFixed(0)}
+                            </span>
+                            <span className="text-gray-500 text-[10px] ml-1">({d.wins}W / {d.losses}L)</span>
+                          </td>
+                          <td className="py-3 px-4 font-mono text-right font-bold whitespace-nowrap">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded ${
+                              d.totalProfit >= 0
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                            }`}>
+                              {d.totalProfit >= 0 ? `+${d.totalProfit.toFixed(2)}` : d.totalProfit.toFixed(2)} GJN
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between px-6 py-3.5 border-t border-[#2e3646] bg-[#1c222c]">
+              <div className="text-xs text-gray-400">
+                Toplam 14 Günlük Kâr: <strong className="text-emerald-400 font-mono">+{dailySummary.reduce((acc, curr) => acc + (curr.totalProfit || 0), 0).toFixed(2)} GJN</strong>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDailyModalOpen(false)}
+                className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-gray-700 hover:bg-gray-600 transition"
+              >
+                Kapat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
