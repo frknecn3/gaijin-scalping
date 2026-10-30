@@ -9,9 +9,10 @@ import { performNightlyAudit } from './modules/audit.js';
 import db from './db/database.js';
 import snipeBuyRouter from "./routers/snipeBuy.route.js";
 import { startGuardLoop } from './guard.js';
-import { getBotSettings, updateBotSettings, isItemLiquidated, addLiquidateItem, removeLiquidateItem, getLiquidateItems, isItemIgnored, addIgnoredItem, removeIgnoredItem, getIgnoredItems } from './helpers/settingsManager.js';
+import { getBotSettings, updateBotSettings, isItemLiquidated, addLiquidateItem, removeLiquidateItem, getLiquidateItems, isItemIgnored, addIgnoredItem, removeIgnoredItem, getIgnoredItems, getTargetBuys, getTargetBuyConfig, addOrUpdateTargetBuy, removeTargetBuy, toggleTargetBuy, isTargetBuy } from './helpers/settingsManager.js';
 import { syncOpenOrders } from './helpers/orderSync.js';
 import { getAvailableBases } from './helpers/basisTracker.js';
+import { portfolioTracker } from './helpers/portfolioTracker.js';
 dotenv.config();
 // Node 18+ (native fetch)
 
@@ -142,6 +143,144 @@ app.post('/api/ignored/remove', (req, res) => {
         if (!market) return res.status(400).json({ success: false, error: "Market required" });
         removeIgnoredItem(market);
         res.status(200).json({ success: true, ignored: false, market });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e?.message });
+    }
+});
+
+// ==========================================
+// TARGET-BUY (SNIPER / PERSONAL BUY) ENDPOINTS
+// ==========================================
+import { searchTargetItems, validateAndGetMarketDetails, executeImmediateTargetBuy, extractMarketFromInput } from './helpers/targetBuyHelper.js';
+
+app.get('/api/target-buys', async (req, res) => {
+    try {
+        const rawItems = getTargetBuys();
+        
+        // Enrich items with metadata and active order info from local DB
+        const enrichedItems = rawItems.map(item => {
+            let displayName = item.market_name;
+            let icon: string | undefined;
+
+            try {
+                const row = db.prepare('SELECT data FROM Items WHERE hash_name = ?').get(item.market_name) as { data: string } | undefined;
+                if (row?.data) {
+                    const parsed = JSON.parse(row.data);
+                    displayName = parsed.name || displayName;
+                    icon = parsed.icon;
+                }
+            } catch {}
+
+            // Check if there is an active BUY order for this item
+            const activeOrder = db.prepare("SELECT localPrice, id FROM Orders WHERE market = ? AND type = 'BUY'").get(item.market_name) as { localPrice: number; id: string } | undefined;
+
+            return {
+                ...item,
+                display_name: displayName,
+                icon,
+                our_bid: activeOrder ? Number((activeOrder.localPrice / 10000).toFixed(2)) : undefined,
+                order_id: activeOrder?.id
+            };
+        });
+
+        res.status(200).json({ success: true, items: enrichedItems });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e?.message });
+    }
+});
+
+app.get('/api/target-buys/search', async (req, res) => {
+    try {
+        const query = String(req.query.q || '');
+        if (!query.trim()) {
+            return res.status(200).json({ success: true, results: [] });
+        }
+        const results = await searchTargetItems(query, process.env.TOKEN);
+        res.status(200).json({ success: true, results });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e?.message });
+    }
+});
+
+app.post('/api/target-buys/validate', async (req, res) => {
+    try {
+        const { input } = req.body;
+        if (!input || !String(input).trim()) {
+            return res.status(400).json({ success: false, error: "Doğrulanacak link veya isim girilmedi." });
+        }
+        const details = await validateAndGetMarketDetails(String(input), process.env.TOKEN);
+        if (!details.valid) {
+            return res.status(400).json({ success: false, error: details.error || "Gaijin pazarında bu ürün doğrulanamadı." });
+        }
+        res.status(200).json({ success: true, details });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e?.message });
+    }
+});
+
+app.post('/api/target-buys', async (req, res) => {
+    try {
+        const { market, maxPrice } = req.body;
+        if (!market || !maxPrice || Number(maxPrice) <= 0) {
+            return res.status(400).json({ success: false, error: "Pazar adı/linki ve geçerli bir tavan fiyat (> 0) zorunludur." });
+        }
+
+        const resolvedMarket = extractMarketFromInput(String(market));
+        if (!resolvedMarket) {
+            return res.status(400).json({ success: false, error: "Geçerli bir pazar linki veya ürün kodu giriniz." });
+        }
+
+        // 1. Verify existence with Gaijin orderbook
+        const validation = await validateAndGetMarketDetails(resolvedMarket, process.env.TOKEN);
+        if (!validation.valid) {
+            return res.status(400).json({
+                success: false,
+                error: validation.error || `Gaijin pazarında '${resolvedMarket}' adında bir ürün bulunamadı. Lütfen trade.gaijin.net linkini kontrol ediniz.`
+            });
+        }
+
+        const numMaxPrice = Number(maxPrice);
+
+        // 2. Save/Update in SQLite TargetBuys table
+        addOrUpdateTargetBuy(resolvedMarket, numMaxPrice);
+
+        // 3. Immediately attempt to place the TOP BID order on Gaijin
+        const exec = await executeImmediateTargetBuy(resolvedMarket, numMaxPrice, process.env.TOKEN);
+
+        res.status(200).json({
+            success: true,
+            market: resolvedMarket,
+            display_name: validation.display_name,
+            icon: validation.icon,
+            maxPrice: numMaxPrice,
+            orderPlaced: exec.orderPlaced,
+            orderPrice: exec.orderPrice,
+            orderId: exec.orderId,
+            highestCompetitorBid: validation.highest_bid,
+            message: exec.message
+        });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e?.message });
+    }
+});
+
+app.post('/api/target-buys/toggle', (req, res) => {
+    try {
+        const { market, active } = req.body;
+        if (!market) return res.status(400).json({ success: false, error: "Market required" });
+        toggleTargetBuy(market, active);
+        res.status(200).json({ success: true, market, active });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e?.message });
+    }
+});
+
+app.post('/api/target-buys/remove', (req, res) => {
+    try {
+        const { market } = req.body;
+        if (!market) return res.status(400).json({ success: false, error: "Market required" });
+        removeTargetBuy(market);
+        res.status(200).json({ success: true, market, message: `${market} hedef alım listesinden kaldırıldı.` });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e?.message });
     }
@@ -282,7 +421,8 @@ app.post('/api/liquidate/dump', async (req, res) => {
 app.get('/api/operations', async (req, res) => {
     try {
         const liveOrders = await syncOpenOrders();
-        const walletBalance = await getWalletBalance();
+        const rawWalletBalance = await getWalletBalance();
+        const walletBalance = rawWalletBalance ?? 0;
         const liquidatedItems = new Set(getLiquidateItems());
 
         const itemsQuery = db.prepare('SELECT hash_name, data FROM Items').all() as { hash_name: string, data: string }[];
@@ -408,6 +548,86 @@ app.get('/api/operations', async (req, res) => {
     } catch (e: any) {
         console.error("[OPERATIONS-API] Error:", e);
         res.status(500).json({ success: false, error: e?.message || "Internal server error" });
+    }
+});
+
+app.get('/api/daily-details', async (req, res) => {
+    try {
+        let day = req.query.day as string;
+        if (!day || day === 'today') {
+            const todayRow = db.prepare("SELECT DATE('now', '+3 hours') as d").get() as { d: string };
+            day = todayRow.d;
+        } else if (day === 'yesterday') {
+            const yestRow = db.prepare("SELECT DATE('now', '+3 hours', '-1 day') as d").get() as { d: string };
+            day = yestRow.d;
+        }
+
+        const rows = db.prepare(`
+            SELECT 
+                p.market,
+                COUNT(*) as count,
+                ROUND(SUM(p.profit), 2) as totalProfit,
+                ROUND(AVG(p.profit), 3) as avgProfit,
+                ROUND(SUM(p.sellPrice), 2) as totalVolume,
+                ROUND(SUM(p.basis), 2) as totalBasis,
+                SUM(CASE WHEN p.profit > 0.0001 THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN p.profit < -0.0001 THEN 1 ELSE 0 END) as losses,
+                SUM(CASE WHEN ABS(p.profit) <= 0.0001 THEN 1 ELSE 0 END) as breakeven,
+                MAX(p.timestamp) as lastTimestamp
+            FROM Profits p
+            WHERE DATE(p.timestamp, '+3 hours') = ?
+            GROUP BY p.market
+            ORDER BY totalProfit DESC
+        `).all(day) as any[];
+
+        const items = rows.map(r => {
+            const itemRow = db.prepare('SELECT data FROM Items WHERE hash_name = ?').get(r.market) as { data: string } | undefined;
+            let displayName = r.market;
+            let icon: string | undefined;
+            let color: string | undefined;
+            if (itemRow?.data) {
+                try {
+                    const parsed = JSON.parse(itemRow.data);
+                    displayName = parsed.name || parsed.market_name || displayName;
+                    icon = parsed.icon;
+                    color = parsed.color;
+                } catch {}
+            }
+            return {
+                ...r,
+                name: displayName,
+                icon,
+                color
+            };
+        });
+
+        const summary = db.prepare(`
+            SELECT 
+                COUNT(*) as totalTrades,
+                ROUND(SUM(profit), 2) as totalProfit,
+                ROUND(SUM(sellPrice), 2) as totalVolume,
+                SUM(CASE WHEN profit > 0.0001 THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN profit < -0.0001 THEN 1 ELSE 0 END) as losses
+            FROM Profits
+            WHERE DATE(timestamp, '+3 hours') = ?
+        `).get(day) as any;
+
+        res.json({
+            success: true,
+            day,
+            summary: {
+                totalTrades: summary?.totalTrades || 0,
+                totalProfit: summary?.totalProfit || 0,
+                totalVolume: summary?.totalVolume || 0,
+                wins: summary?.wins || 0,
+                losses: summary?.losses || 0,
+                uniqueProducts: items.length
+            },
+            items
+        });
+    } catch (e: any) {
+        console.error('[DAILY-DETAILS-API] Error:', e);
+        res.status(500).json({ success: false, error: e?.message || 'Internal server error' });
     }
 });
 
@@ -581,33 +801,96 @@ app.get('/renewOrders', (req, res): void => {
 })
 
 // Continuous Autonomous Engine
+let lastSuccessfulScanTime = Date.now();
+
+// Autonomous Watchdog - Runs every 30 seconds to prevent any possible hang/freeze
+setInterval(() => {
+    const now = Date.now();
+    const idleSeconds = Math.round((now - lastSuccessfulScanTime) / 1000);
+    
+    // If jobState.running stuck for > 90 seconds, force-clear it
+    if (jobState.running && idleSeconds > 90) {
+        console.warn(`[WATCHDOG] ⚠️ jobState.running was stuck for ${idleSeconds}s! Force-clearing lock.`);
+        jobState.running = false;
+    }
+    
+    // If no scan has completed in > 3 minutes, force-recover
+    if (idleSeconds > 180) {
+        console.warn(`[WATCHDOG] ⚠️ Scanner watchdog triggered: No scans for ${idleSeconds}s! Force-recovering engine.`);
+        jobState.running = false;
+        lastSuccessfulScanTime = now;
+    }
+}, 30000);
+
+app.get('/api/health', (req, res) => {
+    const idleSeconds = Math.round((Date.now() - lastSuccessfulScanTime) / 1000);
+    const buyCount = (db.prepare("SELECT count(*) as count FROM Orders WHERE type = 'BUY'").get() as any)?.count || 0;
+    const sellCount = (db.prepare("SELECT count(*) as count FROM Orders WHERE type = 'SELL'").get() as any)?.count || 0;
+    res.status(200).json({
+        success: true,
+        status: idleSeconds < 180 ? 'HEALTHY' : 'DEGRADED',
+        engine: 'AUTONOMOUS_RUNNING',
+        idleSeconds,
+        activeOrders: {
+            buy: buyCount,
+            sell: sellCount
+        },
+        jobRunning: jobState.running,
+        timestamp: new Date().toISOString()
+    });
+});
+
 async function autoRefreshLoop() {
     console.log("[AUTO-REFRESH] Autonomous engine started.");
     let scanCount = 0;
     while (true) {
-        if (!jobState.running) {
-            scanCount++;
-            
-            // 1. Audit check every 100 scans
-            if (scanCount % 100 === 0) {
-                await performNightlyAudit();
+        try {
+            if (!jobState.running) {
+                scanCount++;
+                
+                // 1. Audit check every 100 scans
+                if (scanCount % 100 === 0) {
+                    try {
+                        await performNightlyAudit();
+                    } catch (auditErr) {
+                        console.error("[AUTO-REFRESH] Audit error:", auditErr);
+                    }
+                }
+
+                const isHardScan = (scanCount % 10 === 0);
+                
+                console.log(`[AUTO-REFRESH] Triggering new data fetch (Scan #${scanCount}, Hard Scan: ${isHardScan})...`);
+                
+                // 2. Fetch market data
+                await startRenewOrders(jobState, isHardScan);
+                
+                // 3. Scan the new data for opportunities
+                await scanMarketForOpportunities();
+
+                lastSuccessfulScanTime = Date.now();
+                console.log(`[AUTO-REFRESH] Scan #${scanCount} complete. Waiting 8 seconds before next cycle...`);
             }
-
-            const isHardScan = (scanCount % 10 === 0);
-            
-            console.log(`[AUTO-REFRESH] Triggering new data fetch (Scan #${scanCount}, Hard Scan: ${isHardScan})...`);
-            
-            // 2. Fetch market data
-            await startRenewOrders(jobState, isHardScan);
-            
-            // 3. Scan the new data for opportunities
-            await scanMarketForOpportunities();
-
-            console.log(`[AUTO-REFRESH] Scan #${scanCount} complete. Waiting 5 seconds before next cycle...`);
+        } catch (loopErr) {
+            console.error("[AUTO-REFRESH] ⚠️ Unexpected error in autoRefreshLoop:", loopErr);
+        } finally {
+            jobState.running = false;
         }
-        await new Promise(res => setTimeout(res, 5000));
+        await new Promise(res => setTimeout(res, 8000));
     }
 }
+
+// On boot: immediately trigger scanMarketForOpportunities if Items table has data
+(async function initialScan() {
+    try {
+        const hasItems = db.prepare('SELECT count(*) as c FROM Items').get() as { c: number };
+        if (hasItems && hasItems.c > 0) {
+            console.log("[INITIAL-SCAN] Items table ready. Starting immediate initial opportunity scan...");
+            await scanMarketForOpportunities();
+        }
+    } catch (err) {
+        console.error("[INITIAL-SCAN] Error in initial scan:", err);
+    }
+})();
 
 // Start the engine
 autoRefreshLoop();
@@ -752,17 +1035,34 @@ app.get('/orders', async (req, res) => {
     const yesterdayProfitQuery = db.prepare("SELECT SUM(profit) as yesterday FROM Profits WHERE DATE(timestamp, '+3 hours') = DATE('now', '+3 hours', '-1 day')").get() as { yesterday: number };
     const yesterdayProfit = yesterdayProfitQuery.yesterday || 0;
 
-    const walletBalance = await getWalletBalance();
-    const effectiveWallet = walletBalance ?? 0;
+    const rawWalletBalance = await getWalletBalance();
+    const rawWallet = rawWalletBalance ?? 0;
+
+    const { stableCash, effectiveWallet } = portfolioTracker.getLiquidMetrics(rawWallet, totalBuy);
 
     const settings = getBotSettings();
-    const operatingCapitalTarget = settings.operatingCapitalTarget ?? 75.00;
-    const externalSpentGJN = settings.externalSpentGJN ?? 116.00;
+    const operatingCapitalTarget = settings.operatingCapitalTarget ?? 140.00;
+    const externalSpentGJN = settings.externalSpentGJN ?? 141.00;
 
-    const totalEquity = effectiveWallet + totalBuy + totalSell;
-    const excessEquity = Math.max(0, totalEquity - operatingCapitalTarget);
-    const spendableCash = Math.max(0, Math.min(effectiveWallet, excessEquity));
-    const lifetimeTotalCreated = totalProfit + externalSpentGJN;
+    const targetBuysList = getTargetBuys();
+    let totalTargetBuysValue = 0;
+    for (const tb of targetBuysList) {
+        if (tb.status === 'ACQUIRED') {
+            const price = tb.acquired_price || tb.max_price || 0;
+            totalTargetBuysValue += price;
+        }
+    }
+    totalTargetBuysValue = Number(totalTargetBuysValue.toFixed(2));
+
+    // GROUND TRUTH ACCOUNTING:
+    // Total Equity = Stable Cash (liquid wallet + buy reservations) + Active Sell inventory (x0.85) + Acquired Sniper/Target Coupons
+    // Completely immune to Gaijin API order cancellation / relisting latency spikes!
+    const totalEquity = Number((stableCash + totalSell + totalTargetBuysValue).toFixed(2));
+    const excessEquity = Number(Math.max(0, totalEquity - operatingCapitalTarget).toFixed(2));
+    
+    // Spendable cash is the excess equity, but naturally capped by the actual liquid cash sitting in the wallet
+    const spendableCash = Number(Math.max(0, Math.min(effectiveWallet, excessEquity)).toFixed(2));
+    const lifetimeTotalCreated = Number((totalProfit + externalSpentGJN + totalTargetBuysValue).toFixed(2));
 
     // Daily breakdown for the last 14 days
     const dailySummary = db.prepare(`
@@ -819,8 +1119,9 @@ app.get('/orders', async (req, res) => {
         data: items,
         liquidatedCount: liquidatedSet.size,
         totals: {
-            buy: totalBuy,
-            sell: totalSell,
+            buy: Number(totalBuy.toFixed(2)),
+            sell: Number(totalSell.toFixed(2)),
+            targetBuysValue: totalTargetBuysValue,
             profit: totalProfit,
             todayProfit: todayProfit,
             yesterdayProfit: yesterdayProfit,
@@ -832,6 +1133,7 @@ app.get('/orders', async (req, res) => {
             externalSpentGJN: externalSpentGJN,
             lifetimeTotalCreated: lifetimeTotalCreated
         },
+        targetBuys: getTargetBuys(),
         dailySummary,
         recentTransactions,
         message: "Ürünler gönderildi."

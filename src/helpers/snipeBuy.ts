@@ -67,6 +67,7 @@ export async function placeTopBuyOrder(opts: {
       orderId: existing.id,
       token: process.env.TOKEN,
     });
+    await new Promise(r => setTimeout(r, 400));
   }
 
   const res = await post({
@@ -82,6 +83,9 @@ export async function placeTopBuyOrder(opts: {
     reqstamp: Date.now(),
     token: process.env.TOKEN,
   });
+
+  if (res?.response && !res?.response?.error) {
+  }
 
   return { ok: !res?.response?.error, error: res?.response?.error ?? null, ...base };
 }

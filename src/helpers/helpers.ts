@@ -11,7 +11,8 @@ export const getInvAssets = async () => {
                 const res = await fetch("https://market-proxy.gaijin.net/assetAPI", {
                     method: "POST",
                     headers: { "content-type": "application/x-www-form-urlencoded" },
-                    body: new URLSearchParams(body)
+                    body: new URLSearchParams(body),
+                    signal: AbortSignal.timeout(15000)
                 });
                 if (res.status === 429) {
                     await sleep(Math.pow(2, i) * 1000);
@@ -121,17 +122,32 @@ async function waitForAssetIdByMarketId(normalID:number, timeoutMs = 15000) {
 async function post(body:any, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
+      const payload: any = {
+        ...body,
+        transactid: Math.floor(Math.random() * (1e14 - 1e6) + 1e6),
+        reqstamp: Date.now()
+      };
+      if ((body.action === 'cln_market_buy' || body.action === 'cln_market_sell') && !payload.agree_stamp) {
+        payload.agree_stamp = Date.now();
+      }
+
       const res = await fetch("https://market-proxy.gaijin.net/web", {
         method: "POST",
         headers: { "content-type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams(body)
+        body: new URLSearchParams(payload),
+        signal: AbortSignal.timeout(15000)
       });
       if (res.status === 429) {
         console.warn(`[API] 429 Too Many Requests (post). Retrying in ${Math.pow(2, i)}s...`);
         await sleep(Math.pow(2, i) * 1000);
         continue;
       }
-      return await res.json();
+      const text = await res.text();
+      try {
+        return JSON.parse(text);
+      } catch {
+        return { success: false, error: text.trim() };
+      }
     } catch (e) {
       if (i === retries - 1) throw e;
       await sleep(Math.pow(2, i) * 1000);
@@ -142,17 +158,29 @@ async function post(body:any, retries = 3) {
 async function marketPost(body:any, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
+      const payload: any = {
+        ...body,
+        transactid: Math.floor(Math.random() * (1e14 - 1e6) + 1e6),
+        reqstamp: Date.now()
+      };
+
       const res = await fetch("https://market-proxy.gaijin.net/market", {
         method: "POST",
         headers: { "content-type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams(body)
+        body: new URLSearchParams(payload),
+        signal: AbortSignal.timeout(15000)
       });
       if (res.status === 429) {
         console.warn(`[API] 429 Too Many Requests (marketPost). Retrying in ${Math.pow(2, i)}s...`);
         await sleep(Math.pow(2, i) * 1000);
         continue;
       }
-      return await res.json();
+      const text = await res.text();
+      try {
+        return JSON.parse(text);
+      } catch {
+        return { success: false, error: text.trim() };
+      }
     } catch (e) {
       if (i === retries - 1) throw e;
       await sleep(Math.pow(2, i) * 1000);
@@ -171,26 +199,32 @@ function extractMarketId(marketName:string) {
 }
 
 
+let lastKnownGoodWalletBalance: number | null = null;
+
 async function getWalletBalance(): Promise<number | null> {
   const token = process.env.TOKEN;
-  if (!token) return null;
+  if (!token) return lastKnownGoodWalletBalance;
 
   try {
-    const res = await fetch("https://wallet.gaijin.net/GetBalance?", {
+    const res = await fetch(`https://wallet.gaijin.net/GetBalance?_t=${Date.now()}`, {
       headers: {
         "accept": "application/json, text/plain, */*",
         "authorization": "BEARER " + token,
-        "Referer": "https://trade.gaijin.net/"
+        "Referer": "https://trade.gaijin.net/",
+        "cache-control": "no-cache, no-store, must-revalidate",
+        "pragma": "no-cache"
       }
     });
     const json = await res.json();
     if (json.status === "OK" && typeof json.balance === "number") {
-      return json.balance / 10000; // 76500 -> 7.65 GJN
+      const bal = json.balance / 10000; // 76500 -> 7.65 GJN
+      lastKnownGoodWalletBalance = bal;
+      return bal;
     }
-    return null;
+    return lastKnownGoodWalletBalance;
   } catch (err) {
     console.error("[WALLET] Error fetching balance:", err);
-    return null;
+    return lastKnownGoodWalletBalance;
   }
 }
 

@@ -2,7 +2,7 @@ import db from '../db/database.js';
 import { canBuyItem, acquireBuyLock, releaseBuyLock, isBuyLocked } from './riskManager.js';
 import { post, marketPost, getPairStat, calculateLiquidityScore } from '../helpers/helpers.js';
 import { syncOpenOrders } from '../helpers/orderSync.js';
-import { getBotSettings, isItemLiquidated, isItemIgnored, getMatchingTierRule } from '../helpers/settingsManager.js';
+import { getBotSettings, isItemLiquidated, isItemIgnored, isTargetBuy, getMatchingTierRule } from '../helpers/settingsManager.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -32,9 +32,9 @@ export async function scanMarketForOpportunities() {
     // 2. Filter & score items
     const scoredItems: { item: any; score: number }[] = [];
     for (const item of parsedItems) {
-        // Skip keys or explicitly ignored items
+        // Skip keys or explicitly ignored items or target buys
         if (item.tags?.includes('type:key')) continue;
-        if (isItemIgnored(item.hash_name)) continue;
+        if (isItemIgnored(item.hash_name) || isTargetBuy(item.hash_name)) continue;
 
         // Skip items we are ALREADY buying (open BUY order exists or active buy lock)
         if (currentlyBuying.has(item.hash_name) || isBuyLocked(item.hash_name)) {
@@ -172,20 +172,22 @@ export async function scanMarketForOpportunities() {
                     continue;
                 }
 
-                // 3. DUAL-SIDED REAL EXECUTION PROOF (Anti-Fake Spread & Ghost Order Guard):
-                // For items at or above dynamicProfitThreshold, ensure that real trades
-                // have actually executed on BOTH sides of the order book in the last 24 hours:
-                if (highestBuy >= settings.dynamicProfitThreshold) {
+                // 3. DUAL-SIDED REAL EXECUTION PROOF & LIQUIDITY REALITY CHECK:
+                // For items at or above dynamicProfitThreshold (or >= 3.00 GJN), ensure that real trades
+                // have ACTUALLY executed in the last 24 hours! Do not trade unverified / dead books!
+                if (highestBuy >= settings.dynamicProfitThreshold || targetBuyPrice >= 3.00) {
                     let lowTrade24h = item.lowestOfLast24h;
                     let highTrade24h = item.highestOfLast24h;
+                    let txCount24h = item.salesCount24h || 0;
 
-                    // If cached values are missing, fetch live pairStat on the fly
-                    if (lowTrade24h === undefined || highTrade24h === undefined) {
+                    // If cached values are missing or zero, fetch live pairStat on the fly
+                    if (lowTrade24h === undefined || highTrade24h === undefined || txCount24h === 0) {
                         try {
                             const stat = await getPairStat(item.hash_name);
                             if (stat && stat["1h"]) {
                                 const nowSec = Math.floor(Date.now() / 1000);
                                 const tx24h = stat["1h"].filter((d: any) => (nowSec - d[0]) <= 86400);
+                                txCount24h = tx24h.length;
                                 if (tx24h.length > 0) {
                                     const prices = tx24h.map((d: any) => d[1] / 10000);
                                     lowTrade24h = Math.min(...prices);
@@ -193,6 +195,20 @@ export async function scanMarketForOpportunities() {
                                 }
                             }
                         } catch {}
+                    }
+
+                    // ZERO-LIQUIDITY TRAP GUARD:
+                    // If targetBuyPrice >= 3.00 GJN and there were literally 0 executed sales in 24 hours,
+                    // the order book is completely dead / artificial. Buying here is a guaranteed trap!
+                    if (txCount24h === 0 && (!item.avgPrice24h || item.avgPrice24h === 0)) {
+                        console.log(`[SCANNER] 🚩 ZERO-LIQUIDITY TRAP for ${item.hash_name}. Target buy is ${targetBuyPrice.toFixed(2)} GJN but item has 0 confirmed trades in last 24h. Skipping.`);
+                        continue;
+                    }
+
+                    // For high-value items (>= 7.00 GJN), require minimum 24h liquidity proof
+                    if (targetBuyPrice >= 7.00 && txCount24h < 1 && item.last2Volume < 6) {
+                        console.log(`[SCANNER] 🚩 LOW-VOLUME HIGH-TICKET TRAP for ${item.hash_name}. Price ${targetBuyPrice.toFixed(2)} GJN requires active market (24h sales: ${txCount24h}, 48h vol: ${item.last2Volume} < 6). Skipping.`);
+                        continue;
                     }
 
                     // A) Low-Side Fill Verification (BUY order execution proof):
@@ -273,24 +289,27 @@ async function placeBuyOrder(marketName: string, targetBuyPrice: number): Promis
         market_name: marketName,
         currencyid: "gjn",
         amount: 1,
-        transactid: Math.round(Math.random() * 100000),
-        reqstamp: Date.now(),
         token: process.env.TOKEN
     });
 
     if (res?.response?.success) {
         console.log(`[SCANNER] Successfully placed BUY order for ${marketName}`);
 
-        // Immediately record into SQLite Orders table so all subsequent checks and risk manager see it
-        const orderId = res.response.orderId?.toString() || `pending_${Date.now()}`;
-        const pairId = res.response.pairId?.toString() || '';
-        db.prepare('INSERT OR REPLACE INTO Orders (id, pairId, market, type, localPrice) VALUES (?, ?, ?, ?, ?)').run(
-            orderId,
-            pairId,
-            marketName,
-            'BUY',
-            rawPrice
-        );
+        // Sync with Gaijin to get the real numeric orderId and pairId immediately
+        try {
+            await syncOpenOrders(false);
+        } catch (syncErr) {
+            console.error(`[SCANNER] Error syncing orders after buy:`, syncErr);
+            const orderId = res.response.orderId?.toString() || `pending_${Date.now()}`;
+            const pairId = res.response.pairId?.toString() || '';
+            db.prepare('INSERT OR REPLACE INTO Orders (id, pairId, market, type, localPrice, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)').run(
+                orderId,
+                pairId,
+                marketName,
+                'BUY',
+                rawPrice
+            );
+        }
         return true;
     } else {
         console.log(`[SCANNER] Failed to place BUY order for ${marketName}:`, res?.response?.error || 'Unknown error');
@@ -300,7 +319,9 @@ async function placeBuyOrder(marketName: string, targetBuyPrice: number): Promis
 }
 
 async function attemptBudgetReallocation(newMarketName: string, newPrice: number, newScore: number, parsedItems: any[]): Promise<boolean> {
-    const activeOrders = db.prepare("SELECT id, pairId, market, type, localPrice FROM Orders WHERE type = 'BUY'").all() as { id: string, pairId: string, market: string, type: string, localPrice: number }[];
+    const allBuyOrders = db.prepare("SELECT id, pairId, market, type, localPrice FROM Orders WHERE type = 'BUY'").all() as { id: string, pairId: string, market: string, type: string, localPrice: number }[];
+    // NEVER cancel target buy orders (e.g. KV-220) for budget reallocation!
+    const activeOrders = allBuyOrders.filter(o => !isTargetBuy(o.market));
 
     if (activeOrders.length === 0) return false;
 

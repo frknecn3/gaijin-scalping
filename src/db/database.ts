@@ -82,9 +82,29 @@ db.exec(`
     market_name TEXT PRIMARY KEY,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS TargetBuys (
+    market_name TEXT PRIMARY KEY,
+    max_price REAL NOT NULL,
+    active INTEGER DEFAULT 1,
+    status TEXT DEFAULT 'ACTIVE',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    acquired_at DATETIME,
+    acquired_price REAL
+  );
 `);
 
 // Safe migrations for existing databases
+try {
+  const targetBuysCols = db.prepare('PRAGMA table_info(TargetBuys)').all() as any[];
+  const hasAcquiredPrice = targetBuysCols.some(c => c.name === 'acquired_price');
+  if (!hasAcquiredPrice) {
+    db.exec('ALTER TABLE TargetBuys ADD COLUMN acquired_price REAL');
+    console.log('[DB] Added acquired_price column to TargetBuys table.');
+  }
+} catch (e) {
+  console.error('[DB] Migration error on TargetBuys table:', e);
+}
 try {
   const tableInfo = db.prepare('PRAGMA table_info(Orders)').all() as any[];
   const hasCreatedAt = tableInfo.some(c => c.name === 'created_at');

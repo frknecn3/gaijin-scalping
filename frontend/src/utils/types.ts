@@ -53,10 +53,29 @@ export type TotalsType = {
   todayProfit?: number;
   yesterdayProfit?: number;
   walletBalance?: number;
+  rawWalletBalance?: number;
+  inFlightCash?: number;
   totalEquity?: number;
   operatingCapitalTarget?: number;
   excessEquity?: number;
   spendableCash?: number;
   externalSpentGJN?: number;
+  targetBuysValue?: number;
   lifetimeTotalCreated?: number;
+};
+
+export type DailyItemBreakdown = {
+  market: string;
+  name: string;
+  icon?: string;
+  color?: string;
+  count: number;
+  totalProfit: number;
+  avgProfit: number;
+  totalVolume: number;
+  totalBasis: number;
+  wins: number;
+  losses: number;
+  breakeven: number;
+  lastTimestamp: string;
 };

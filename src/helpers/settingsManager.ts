@@ -294,3 +294,132 @@ export function getIgnoredItems(): string[] {
     }
 }
 
+export interface TargetBuyItem {
+    market_name: string;
+    max_price: number;
+    active: boolean;
+    status: string;
+    created_at?: string;
+    acquired_at?: string;
+    acquired_price?: number;
+}
+
+export function getTargetBuys(): TargetBuyItem[] {
+    try {
+        const rows = db.prepare('SELECT market_name, max_price, active, status, created_at, acquired_at, acquired_price FROM TargetBuys ORDER BY created_at DESC').all() as any[];
+        return rows.map(r => ({
+            market_name: r.market_name,
+            max_price: Number(r.max_price),
+            active: Boolean(r.active),
+            status: r.status || (r.active ? 'ACTIVE' : 'PAUSED'),
+            created_at: r.created_at,
+            acquired_at: r.acquired_at,
+            acquired_price: typeof r.acquired_price === 'number' ? Number(r.acquired_price) : undefined
+        }));
+    } catch {
+        return [];
+    }
+}
+
+export function isTargetBuy(marketName: string): boolean {
+    try {
+        const row = db.prepare('SELECT active, status FROM TargetBuys WHERE market_name = ?').get(marketName) as { active: number; status: string } | undefined;
+        return !!row && Boolean(row.active);
+    } catch {
+        return false;
+    }
+}
+
+export function isAnyTargetBuy(marketName: string): boolean {
+    try {
+        const row = db.prepare('SELECT market_name FROM TargetBuys WHERE market_name = ?').get(marketName) as { market_name: string } | undefined;
+        return !!row;
+    } catch {
+        return false;
+    }
+}
+
+export function getTargetBuyConfig(marketName: string): TargetBuyItem | undefined {
+    try {
+        const row = db.prepare('SELECT market_name, max_price, active, status, created_at, acquired_at, acquired_price FROM TargetBuys WHERE market_name = ?').get(marketName) as any;
+        if (!row) return undefined;
+        return {
+            market_name: row.market_name,
+            max_price: Number(row.max_price),
+            active: Boolean(row.active),
+            status: row.status || (row.active ? 'ACTIVE' : 'PAUSED'),
+            created_at: row.created_at,
+            acquired_at: row.acquired_at,
+            acquired_price: typeof row.acquired_price === 'number' ? Number(row.acquired_price) : undefined
+        };
+    } catch {
+        return undefined;
+    }
+}
+
+export function addOrUpdateTargetBuy(marketName: string, maxPrice: number): void {
+    try {
+        db.prepare(`
+            INSERT INTO TargetBuys (market_name, max_price, active, status)
+            VALUES (?, ?, 1, 'ACTIVE')
+            ON CONFLICT(market_name) DO UPDATE SET max_price = excluded.max_price, active = 1, status = 'ACTIVE'
+        `).run(marketName, maxPrice);
+        console.log(`[TARGET-BUY] Configured target buy for ${marketName} (Max: ${maxPrice.toFixed(2)} GJN)`);
+    } catch (e) {
+        console.error(`[TARGET-BUY] Error configuring target buy for ${marketName}:`, e);
+    }
+}
+
+export function removeTargetBuy(marketName: string): void {
+    try {
+        db.prepare('DELETE FROM TargetBuys WHERE market_name = ?').run(marketName);
+        console.log(`[TARGET-BUY] Removed target buy for ${marketName}`);
+    } catch (e) {
+        console.error(`[TARGET-BUY] Error removing target buy for ${marketName}:`, e);
+    }
+}
+
+export function toggleTargetBuy(marketName: string, active: boolean): void {
+    try {
+        const status = active ? 'ACTIVE' : 'PAUSED';
+        db.prepare('UPDATE TargetBuys SET active = ?, status = ? WHERE market_name = ?').run(active ? 1 : 0, status, marketName);
+        console.log(`[TARGET-BUY] Toggled target buy for ${marketName} -> active: ${active}`);
+    } catch (e) {
+        console.error(`[TARGET-BUY] Error toggling target buy for ${marketName}:`, e);
+    }
+}
+
+export function markTargetBuyAcquired(marketName: string, acquiredPrice?: number): void {
+    try {
+        if (acquiredPrice !== undefined && acquiredPrice > 0) {
+            db.prepare("UPDATE TargetBuys SET active = 0, status = 'ACQUIRED', acquired_at = datetime('now'), acquired_price = ? WHERE market_name = ?").run(acquiredPrice, marketName);
+            console.log(`[TARGET-BUY] 🏆 Marked ${marketName} as ACQUIRED at ${acquiredPrice.toFixed(2)} GJN!`);
+            return;
+        }
+
+        // If acquiredPrice is not provided, try to find it from Basis or Orders
+        const existing = db.prepare('SELECT acquired_price FROM TargetBuys WHERE market_name = ?').get(marketName) as { acquired_price?: number } | undefined;
+        if (!existing?.acquired_price) {
+            const bRow = db.prepare('SELECT basis_prices FROM Basis WHERE market_name = ?').get(marketName) as { basis_prices: string } | undefined;
+            let foundPrice: number | undefined;
+            if (bRow?.basis_prices) {
+                try {
+                    const arr = JSON.parse(bRow.basis_prices);
+                    if (Array.isArray(arr) && arr.length > 0) foundPrice = arr[0];
+                } catch {}
+            }
+            if (foundPrice && foundPrice > 0) {
+                db.prepare("UPDATE TargetBuys SET active = 0, status = 'ACQUIRED', acquired_at = datetime('now'), acquired_price = ? WHERE market_name = ?").run(foundPrice, marketName);
+                console.log(`[TARGET-BUY] 🏆 Marked ${marketName} as ACQUIRED at ${foundPrice.toFixed(2)} GJN (resolved from Basis)!`);
+                return;
+            }
+        }
+
+        db.prepare("UPDATE TargetBuys SET active = 0, status = 'ACQUIRED', acquired_at = datetime('now') WHERE market_name = ?").run(marketName);
+        console.log(`[TARGET-BUY] 🏆 Marked ${marketName} as ACQUIRED!`);
+    } catch (e) {
+        console.error(`[TARGET-BUY] Error marking ${marketName} as acquired:`, e);
+    }
+}
+
+

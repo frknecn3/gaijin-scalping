@@ -1,7 +1,7 @@
 import { post, getInvAssets } from './helpers.js';
 import db from '../db/database.js';
 import { addBasis, consumeBasis, getAvailableBases } from './basisTracker.js';
-import { isItemLiquidated, removeLiquidateItem, getLiquidateItems } from './settingsManager.js';
+import { isItemLiquidated, removeLiquidateItem, getLiquidateItems, isAnyTargetBuy, markTargetBuyAcquired } from './settingsManager.js';
 
 function isCancelled(orderId: number | string): boolean {
     const row = db.prepare('SELECT id FROM CancelledOrders WHERE id = ?').get(orderId);
@@ -45,7 +45,7 @@ export async function syncUserHistory(): Promise<void> {
         const checkProcessed = db.prepare('SELECT id FROM ProcessedEvents WHERE id = ?');
         const allNewEvents: GaijinHistoryEvent[] = [];
 
-        for (let skip = 0; skip < 1000; skip += 100) {
+        for (let skip = 0; skip < 2500; skip += 100) {
             const json = await post({
                 action: "cln_get_user_history",
                 token,
@@ -90,6 +90,9 @@ export async function syncUserHistory(): Promise<void> {
                 if (ev.type === "BUY") {
                     console.log(`[HISTORY] Confirmed BUY deal: ${ev.hashname} at ${dealPrice.toFixed(2)} GJN`);
                     addBasis(ev.hashname, dealPrice);
+                    if (isAnyTargetBuy(ev.hashname)) {
+                        markTargetBuyAcquired(ev.hashname, dealPrice);
+                    }
                 } else if (ev.type === "SELL") {
                     const available = getAvailableBases(ev.hashname);
                     const basis = available.length > 0 ? available[0] : (dealPrice * 0.85); // fallback if basis unknown
@@ -127,15 +130,17 @@ export async function syncUserHistory(): Promise<void> {
  * Also runs syncUserHistory to ensure 100% accurate cost basis and real trade profit logging.
  * Returns the list of currently open orders.
  */
-export async function syncOpenOrders(): Promise<GaijinOpenOrder[]> {
+export async function syncOpenOrders(fullSync: boolean = true): Promise<GaijinOpenOrder[]> {
     const token = process.env.TOKEN;
     if (!token) {
         console.warn("[SYNC-ORDERS] No TOKEN provided. Reading local Orders table only.");
         return db.prepare('SELECT * FROM Orders').all() as GaijinOpenOrder[];
     }
 
-    // Sync official trade history first to ensure basis and profits are perfectly up to date
-    await syncUserHistory();
+    // Sync official trade history first if fullSync requested
+    if (fullSync) {
+        await syncUserHistory();
+    }
 
     try {
         const json = await post({ action: "cln_get_user_open_orders", token });
@@ -209,6 +214,7 @@ export async function syncOpenOrders(): Promise<GaijinOpenOrder[]> {
             console.error("[SYNC-ORDERS] Error auto-clearing liquidation items:", liqErr);
         }
 
+        if (fullSync) {
         // Reconcile Basis with ACTUAL inventory from Gaijin
         // If an item is NOT in the real Gaijin inventory, it MUST NOT exist in Basis!
         try {
@@ -247,10 +253,50 @@ export async function syncOpenOrders(): Promise<GaijinOpenOrder[]> {
                     db.prepare('UPDATE Basis SET basis_prices = ? WHERE market_name = ?').run(JSON.stringify(prices), b.market_name);
                 }
             }
+
+            // RECOVER ORPHAN BASIS:
+            // If an item exists in actual inventory or open SELL orders, but has missing Basis entries in DB,
+            // query Gaijin official history for the latest confirmed purchase price of that market item!
+            const allOwnedMarkets = new Set([...Object.keys(actualInvCounts), ...Object.keys(openSellCounts)]);
+            let histEvents: any[] | null = null;
+            for (const marketName of allOwnedMarkets) {
+                const totalOwned = (actualInvCounts[marketName] || 0) + (openSellCounts[marketName] || 0);
+                const currentBases = getAvailableBases(marketName);
+                const missingCount = totalOwned - currentBases.length;
+
+                if (missingCount > 0) {
+                    try {
+                        if (histEvents === null) {
+                            const histRes = await post({
+                                action: "cln_get_user_history",
+                                token,
+                                count: 100,
+                                skip: 0
+                            });
+                            histEvents = (histRes?.response?.events && Array.isArray(histRes.response.events)) ? histRes.response.events : [];
+                        }
+                        const eventsList = histEvents || [];
+                        const buyDeals = eventsList.filter(
+                            (ev: any) => ev.event === "deal" && ev.type === "BUY" && ev.hashname === marketName
+                        );
+                        if (buyDeals.length > 0) {
+                            for (let k = 0; k < missingCount && k < buyDeals.length; k++) {
+                                const recoveredPrice = buyDeals[k].price / 10000;
+                                console.log(`[ORPHAN-RECOVERY] 🛡️ Successfully recovered true purchase price for ${marketName}: ${recoveredPrice.toFixed(2)} GJN`);
+                                addBasis(marketName, recoveredPrice);
+                            }
+                        }
+                    } catch (recErr) {
+                        console.error(`[ORPHAN-RECOVERY] Error recovering basis for ${marketName}:`, recErr);
+                    }
+                }
+            }
         } catch (invErr) {
             console.error("[SYNC-ORDERS] Error reconciling Basis with live inventory:", invErr);
         }
 
+
+        }
         const dbOrders = db.prepare('SELECT id, pairId, market, type, localPrice, created_at FROM Orders').all() as GaijinOpenOrder[];
         return dbOrders;
     } catch (err) {

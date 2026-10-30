@@ -1,11 +1,12 @@
+const failedAssetCooldown = new Map<string | number, number>();
 import dotenv from "dotenv";
 import fs from 'fs';
 import path from 'path'
-import { marketPost, post, sellerShouldGet, waitForAssetIdByMarketId, getInvAssets } from "./helpers/helpers.js";
+import { marketPost, post, sellerShouldGet, waitForAssetIdByMarketId, getInvAssets, getWalletBalance } from "./helpers/helpers.js";
 import { getAvailableBases, addBasis } from "./helpers/basisTracker.js";
 import { syncOpenOrders } from "./helpers/orderSync.js";
 import db from "./db/database.js";
-import { getBotSettings, isItemLiquidated } from "./helpers/settingsManager.js";
+import { getBotSettings, isItemLiquidated, getTargetBuys, getTargetBuyConfig, isTargetBuy, isAnyTargetBuy, markTargetBuyAcquired } from "./helpers/settingsManager.js";
 dotenv.config();
 
 // ================= CONFIG =================
@@ -74,6 +75,11 @@ const checkStandingOrders = async () => {
             token,
         })
 
+        if (!Array.isArray(market?.response?.BUY) || !Array.isArray(market?.response?.SELL)) {
+            console.warn(`[GUARD] Invalid market response for ${item.market}:`, market?.response || market);
+            continue;
+        }
+
         let trueHighestCompetitorBuy: number | null = null;
         for (const [priceStr, amount] of market.response.BUY) {
             const price = priceStr / 10000;
@@ -121,17 +127,97 @@ const checkStandingOrders = async () => {
                 continue;
             }
 
-            const unnecessarilyHighBuy = (item.localPrice / 10000) > (trueHighestCompetitorBuy + 0.01) + 0.005;
+            // TARGET-BUY (Sniper / Personal Buy) Handler:
+            // User wants this item (e.g. KV-220) at the lowest price up to max_price.
+            // 1. NEVER cancel for "unprofitable" / "no margin"!
+            // 2. Outbid competitors by +0.01 up to max_price.
+            // 3. Step down if competitor drops to save money.
+            // 4. Never cancel for TTL.
+            const targetBuyConfig = getTargetBuyConfig(item.market);
+            if (targetBuyConfig && targetBuyConfig.active) {
+                const maxAllowedPrice = targetBuyConfig.max_price;
+                const idealBid = Number((trueHighestCompetitorBuy + 0.01).toFixed(2));
+                const unnecessarilyHigh = userBid > (idealBid + 0.005);
+                const isOutbid = userBid < highestBid;
 
-            console.log("unnecessarily high? ", unnecessarilyHighBuy)
-            console.log(item.localPrice / 10000, trueHighestCompetitorBuy)
+                let needsTargetRelist = false;
+                if (isOutbid) {
+                    if (idealBid <= maxAllowedPrice) {
+                        console.log(`[TARGET-BUY] Outbid on ${item.market}! Relisting: ${userBid.toFixed(2)} -> ${idealBid.toFixed(2)} GJN (Max budget: ${maxAllowedPrice.toFixed(2)} GJN)`);
+                        needsTargetRelist = true;
+                    } else {
+                        console.warn(`[TARGET-BUY] Outbid on ${item.market} (${highestBid.toFixed(2)} GJN), but competitor exceeds max budget (${maxAllowedPrice.toFixed(2)} GJN). Holding bid at ${userBid.toFixed(2)} GJN.`);
+                        continue;
+                    }
+                } else if (unnecessarilyHigh && idealBid <= maxAllowedPrice) {
+                    console.log(`[TARGET-BUY] Bid for ${item.market} is unnecessarily high (${userBid.toFixed(2)} vs ideal ${idealBid.toFixed(2)} GJN). Stepping down to save money.`);
+                    needsTargetRelist = true;
+                }
 
-            const unprofitable = lowestSell * 0.85 - highestBid < MIN_PROFIT;
+                if (needsTargetRelist) {
+                    recordCancelled(item.id);
+                    const idx = activeOrdersTracker.findIndex(o => o.id === item.id);
+                    if (idx !== -1) activeOrdersTracker.splice(idx, 1);
 
-            if (unprofitable) {
-                // If the market price dropped and this buy order is no longer profitable:
-                // CANCEL IT IMMEDIATELY to prevent getting dumped on by a falling knife!
-                console.warn(`[GUARD] Cancelling UNPROFITABLE BUY order for ${item.market} (Spread: ${(lowestSell * 0.85 - highestBid).toFixed(3)} < ${MIN_PROFIT}).`);
+                    const res1 = await marketPost({
+                        action: "cancel_order",
+                        pairId: item.pairId,
+                        orderId: item.id,
+                        token
+                    });
+
+                    if (!res1?.response?.success) {
+                        console.log("[TARGET-BUY] Failed to cancel order, skipping relist.");
+                        continue;
+                    }
+
+                    await new Promise(r => setTimeout(r, 400));
+
+                    const priceToSet = Math.round(idealBid * 10000);
+                    const buyParams: any = {
+                        action: "cln_market_buy",
+                        price: priceToSet,
+                        privateMode: true,
+                        appid: 1067,
+                        market_name: item.market,
+                        currencyid: "gjn",
+                        amount: 1,
+                        token
+                    };
+                    if (item.pairId) buyParams.pairId = item.pairId;
+
+                    const res = await post(buyParams);
+                    if (res?.response?.success) {
+                        const newOrderId = res.response.orderId?.toString() || `pending_${Date.now()}`;
+                        activeOrdersTracker.push({
+                            id: newOrderId,
+                            type: "BUY",
+                            market: item.market,
+                            localPrice: priceToSet
+                        });
+                        db.prepare('INSERT OR REPLACE INTO Orders (id, pairId, market, type, localPrice, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)').run(
+                            newOrderId,
+                            item.pairId || '',
+                            item.market,
+                            'BUY',
+                            priceToSet
+                        );
+                        console.log(`[TARGET-BUY] ✅ Successfully placed/relisted top bid for ${item.market} at ${idealBid.toFixed(2)} GJN!`);
+                    } else {
+                        console.error(`[TARGET-BUY] ❌ Failed to relist BUY for ${item.market}:`, res?.response?.error || res?.error || res);
+                    }
+                }
+                continue;
+            }
+
+            const isOutbid = userBid < highestBid;
+            const isProfitableToRelist = (lowestSell * 0.85 - (highestBid + 0.01)) > MIN_PROFIT;
+
+            // True Falling Knife Safeguard:
+            // Only cancel if lowest sell price dropped below our actual bid price after fee (guaranteed loss if filled).
+            const isFallingKnife = (lowestSell * 0.85) < userBid;
+            if (isFallingKnife) {
+                console.warn(`[GUARD] Cancelling FALLING KNIFE BUY order for ${item.market}: Net sell ${(lowestSell * 0.85).toFixed(2)} < User bid ${userBid.toFixed(2)} GJN.`);
                 recordCancelled(item.id);
                 const idx = activeOrdersTracker.findIndex(o => o.id === item.id);
                 if (idx !== -1) activeOrdersTracker.splice(idx, 1);
@@ -145,30 +231,16 @@ const checkStandingOrders = async () => {
                 continue;
             }
 
-            // Check Buy Order TTL:
-            // If our buy order is outbid (userBid < highestBid) and has been sitting for > buyOrderTtlMinutes
-            const orderCreatedAt = item.created_at ? new Date(item.created_at + 'Z').getTime() : Date.now();
-            const orderAgeMinutes = (Date.now() - orderCreatedAt) / (60 * 1000);
-            const isBuyTtlExpired = (userBid < highestBid) && (orderAgeMinutes >= settings.buyOrderTtlMinutes);
+            // Unnecessarily High Bid:
+            // Only consider stepping down if our bid is top bid AND there is an active competitor buy order (trueHighestCompetitorBuy > 0)
+            // AND our bid is strictly more than 0.02 GJN above them.
+            const isTopBid = userBid >= highestBid;
+            const unnecessarilyHighBuy = isTopBid && (trueHighestCompetitorBuy > 0) && (userBid > (trueHighestCompetitorBuy + 0.02));
 
-            if (isBuyTtlExpired) {
-                console.warn(`[GUARD] Cancelling TTL-EXPIRED BUY order for ${item.market} (Age: ${orderAgeMinutes.toFixed(1)}m >= ${settings.buyOrderTtlMinutes}m).`);
-                recordCancelled(item.id);
-                const idx = activeOrdersTracker.findIndex(o => o.id === item.id);
-                if (idx !== -1) activeOrdersTracker.splice(idx, 1);
+            // Check if this order needs relisting (competitor outbid us AND it is profitable to outbid them, OR our bid is unnecessarily high)
+            const shouldRelist = (isOutbid && isProfitableToRelist) || unnecessarilyHighBuy;
 
-                await marketPost({
-                    action: "cancel_order",
-                    pairId: item.pairId,
-                    orderId: item.id,
-                    token
-                });
-                continue;
-            }
-
-
-            if (userBid < highestBid && (lowestSell * 0.85 - highestBid) > MIN_PROFIT || unnecessarilyHighBuy) {
-
+            if (shouldRelist) {
                 recordCancelled(item.id);
                 const idx = activeOrdersTracker.findIndex(o => o.id === item.id);
                 if (idx !== -1) activeOrdersTracker.splice(idx, 1);
@@ -178,12 +250,15 @@ const checkStandingOrders = async () => {
                     pairId: item.pairId,
                     orderId: item.id,
                     token
-                })
+                });
 
                 if (!res1?.response?.success) {
-                    console.log("Failed to cancel BUY order, skipping relist.");
+                    console.log("[GUARD] Failed to cancel BUY order, skipping relist.");
                     continue;
                 }
+
+                // Short sleep so Gaijin's balance reservation releases cleanly
+                await new Promise(r => setTimeout(r, 400));
 
                 // Guard check: make sure another BUY order for this market hasn't appeared
                 const anotherBuyExists = activeOrdersTracker.some(o => o.type === "BUY" && o.market === item.market);
@@ -192,41 +267,65 @@ const checkStandingOrders = async () => {
                     continue;
                 }
 
-                console.log("BUY:", item.market)
-
                 const priceToSet = Math.round((trueHighestCompetitorBuy + 0.01) * 10000);
+                console.log(`[GUARD] Relisting BUY: ${item.market} at ${(priceToSet / 10000).toFixed(2)} GJN`);
 
-                const res = await post({
+                const buyParams: any = {
                     action: "cln_market_buy",
-                    orderId: item.id,
-                    pairId: item.pairId,
                     price: priceToSet,
                     privateMode: true,
                     appid: 1067,
                     market_name: item.market,
                     currencyid: "gjn",
                     amount: 1,
-                    transactid: Math.round(Math.random() * 100000),
-                    reqstamp: Date.now(),
                     token
-                })
+                };
+                if (item.pairId) buyParams.pairId = item.pairId;
+
+                const res = await post(buyParams);
 
                 if (res?.response?.success) {
-                    const newOrderId = res.response.orderId?.toString() || `pending_${Date.now()}`;
-                    activeOrdersTracker.push({
-                        id: newOrderId,
-                        type: "BUY",
-                        market: item.market,
-                        localPrice: priceToSet
-                    });
-                    db.prepare('INSERT OR REPLACE INTO Orders (id, pairId, market, type, localPrice) VALUES (?, ?, ?, ?, ?)').run(
-                        newOrderId,
-                        item.pairId || '',
-                        item.market,
-                        'BUY',
-                        priceToSet
-                    );
+                    console.log(`[GUARD] ✅ Successfully relisted BUY order for ${item.market} at ${(priceToSet / 10000).toFixed(2)} GJN`);
+                    try {
+                        await syncOpenOrders();
+                    } catch {}
+                } else {
+                    console.error(`[GUARD] ❌ Failed to relist BUY for ${item.market}:`, res?.response?.error || res?.error || res);
                 }
+                continue;
+            }
+
+            // Check Buy Order TTL:
+            // 1. If outbid: cancel after buyOrderTtlMinutes
+            // 2. If top of book but unfulfilled for 2x TTL (e.g. 50 mins): cancel to rotate capital into active markets!
+            let orderCreatedAt = item.created_at ? new Date(item.created_at.includes('Z') ? item.created_at : item.created_at + 'Z').getTime() : 0;
+            if (!orderCreatedAt || isNaN(orderCreatedAt)) {
+                if (typeof item.id === 'string' && item.id.startsWith('pending_')) {
+                    orderCreatedAt = Number(item.id.split('_')[1]) || Date.now();
+                } else if (item.time) {
+                    orderCreatedAt = Number(item.time) * 1000;
+                } else {
+                    orderCreatedAt = Date.now();
+                }
+            }
+
+            const orderAgeMinutes = (Date.now() - orderCreatedAt) / (60 * 1000);
+            const isOutbidExpired = (userBid < highestBid) && (orderAgeMinutes >= settings.buyOrderTtlMinutes);
+            const isStagnantTopBidExpired = (orderAgeMinutes >= settings.buyOrderTtlMinutes * 2);
+
+            if (isOutbidExpired || isStagnantTopBidExpired) {
+                console.warn(`[GUARD] Cancelling STALE BUY order for ${item.market} (Age: ${orderAgeMinutes.toFixed(1)}m, Outbid: ${userBid < highestBid}, Stagnant: ${isStagnantTopBidExpired}).`);
+                recordCancelled(item.id);
+                const idx = activeOrdersTracker.findIndex(o => o.id === item.id);
+                if (idx !== -1) activeOrdersTracker.splice(idx, 1);
+
+                await marketPost({
+                    action: "cancel_order",
+                    pairId: item.pairId,
+                    orderId: item.id,
+                    token
+                });
+                continue;
             }
         }
         else {
@@ -350,20 +449,32 @@ const checkStandingOrders = async () => {
                 }
 
                 // Stage 4: Dead Stock Auto-Clearance (Prolonged Stale Inventory Escalation)
-                // If an item has been listed for >= 16h or >= 24h, rigid percentage limits and queue formulas
-                // must NOT keep it trapped forever as a permanent bagholder!
+                // CRITICAL SAFETY RULE: Under NO circumstances should an item EVER be dumped
+                // at a loss exceeding emergencyDumpMaxLossPercent (15%)! No unconstrained blind dumping!
                 if (!isLiquidated && settings.enableDynamicLiquidation) {
                     if (!isSoftStopLoss && !isEmergencyDump) {
-                        if (sellAgeHours >= 24 && highestBid > 0) {
-                            // >= 24 hours stuck: Unconditionally dump to highest BUY bid and free the trapped cash!
+                        const hardLossPercent = settings.emergencyDumpMaxLossPercent || 15.0;
+                        const minNetAllowed = effectiveBasis * (1 - (hardLossPercent / 100));
+                        const hardLossFloorPrice = Number((minNetAllowed / 0.85).toFixed(2));
+
+                        if (sellAgeHours >= 24 && highestBid > 0 && highestBid >= hardLossFloorPrice) {
+                            // >= 24h: If highest BUY bid is within the loss cap, dump to it cleanly
                             isEmergencyDump = true;
                             targetSellPrice = highestBid;
-                            console.log(`[DEAD-STOCK-DUMP] ${item.market} has been stuck for ${sellAgeHours.toFixed(1)}h (>= 24h). Bypassing loss caps and dumping to highest BUY: ${highestBid.toFixed(2)} GJN.`);
+                            console.log(`[DEAD-STOCK-DUMP] ${item.market} stuck for ${sellAgeHours.toFixed(1)}h (>= 24h). Dumping to highest BUY: ${highestBid.toFixed(2)} GJN (Within ${hardLossPercent}% loss floor: ${hardLossFloorPrice.toFixed(2)} GJN).`);
                         } else if (sellAgeHours >= 16 && targetUndercutPrice > 0) {
-                            // >= 16 hours stuck: Allow undercutting to current market ask so it can compete and sell!
-                            isSoftStopLoss = true;
-                            targetSellPrice = targetUndercutPrice;
-                            console.log(`[DEAD-STOCK-UNDERCUT] ${item.market} has been stuck for ${sellAgeHours.toFixed(1)}h (>= 16h). Forcing undercut to market ask: ${targetUndercutPrice.toFixed(2)} GJN.`);
+                            // >= 16h: Undercut, but NEVER undercut below the hard loss floor price!
+                            const safeUndercutPrice = Math.max(targetUndercutPrice, hardLossFloorPrice);
+                            const projectedLoss = effectiveBasis - (safeUndercutPrice * 0.85);
+                            if (projectedLoss <= maxEmergencyLoss) {
+                                isSoftStopLoss = true;
+                                targetSellPrice = safeUndercutPrice;
+                                console.log(`[DEAD-STOCK-UNDERCUT] ${item.market} stuck for ${sellAgeHours.toFixed(1)}h (>= 16h). Undercutting to ${safeUndercutPrice.toFixed(2)} GJN (Hard loss floor: ${hardLossFloorPrice.toFixed(2)} GJN, Max Loss: ${maxEmergencyLoss.toFixed(2)} GJN).`);
+                            } else {
+                                console.log(`[DEAD-STOCK-GUARD] ${item.market} stuck for ${sellAgeHours.toFixed(1)}h, but undercut price (${targetUndercutPrice.toFixed(2)}) would breach hard loss floor (${hardLossFloorPrice.toFixed(2)} GJN). Holding at safe price.`);
+                            }
+                        } else if (sellAgeHours >= 24 && highestBid > 0 && highestBid < hardLossFloorPrice) {
+                            console.warn(`[DEAD-STOCK-GUARD] 🛡️ PREVENTED disastrous dump for ${item.market}! Highest bid (${highestBid.toFixed(2)} GJN) is far below hard loss floor (${hardLossFloorPrice.toFixed(2)} GJN, Basis: ${effectiveBasis.toFixed(2)} GJN). Holding to protect capital.`);
                         }
                     }
                 }
@@ -454,8 +565,6 @@ const checkStandingOrders = async () => {
                 const res = await post({
                     action: "cln_market_sell",
                     token: process.env.SELLTOKEN || token,
-                    transactid: Math.round(Math.random() * 100000),
-                    reqstamp: Date.now(),
                     appid: 1067,
                     contextid: 1,
                     assetid: assetID,
@@ -468,8 +577,9 @@ const checkStandingOrders = async () => {
                     privateMode: true,
                 })
 
-                if (res?.response?.error == "WRONG_PRICE") {
-                    console.log("\n\nyanlış fiyat\n\n")
+                if (res?.response?.error) {
+                    failedAssetCooldown.set(assetID, Date.now() + 3600_000); // 1 hour cooldown on failed asset
+                    console.warn(`[Auto-Lister] Listing ${item.market} failed (${res.response.error}). Cooldown set for 1h.`);
                 } else if (res?.response?.success) {
                     newSellOrdersCount[item.market] = (newSellOrdersCount[item.market] || 0) + 1;
                     activeOrdersTracker.push({
@@ -481,6 +591,15 @@ const checkStandingOrders = async () => {
             }
         }
 
+    }
+
+    // ==========================================
+    // TARGET-BUY AUTOMATED PLACEMENT (Initial Bid)
+    // ==========================================
+    try {
+        await checkAndPlaceTargetBuys(activeOrdersTracker);
+    } catch (tbErr) {
+        console.error("[TARGET-BUY] Error in checkAndPlaceTargetBuys:", tbErr);
     }
 
     // ==========================================
@@ -518,6 +637,18 @@ const checkStandingOrders = async () => {
         for (const market in invByMarket) {
             if (ignore.includes(market)) continue;
 
+            // Skip commodity trophies / crates with zero profit potential that trigger WRONG_PRICE spam
+            if (market.includes('trophy') || market.includes('chest') || market.includes('crate')) {
+                continue;
+            }
+
+            // Target Buy items (e.g. KV-220) are personal purchases and MUST NOT be auto-sold!
+            if (isAnyTargetBuy(market)) {
+                console.log(`[Auto-Lister] 🛡️ Target Buy item ${market} found in inventory! Keeping for user (will NOT auto-sell).`);
+                markTargetBuyAcquired(market);
+                continue;
+            }
+
             const idleItems = invByMarket[market];
             const activeSellOrdersCount = (activeSellOrdersByMarket[market] || 0) + (newSellOrdersCount[market] || 0);
             const availableBases = getAvailableBases(market);
@@ -537,23 +668,53 @@ const checkStandingOrders = async () => {
                 for (let i = 0; i < idleItems.length; i++) {
                     const unassignedBaseIndex = activeSellOrdersCount + i;
                     const basis = availableBases[unassignedBaseIndex];
-                    const targetPrice = lowestSell - 0.01;
+                    let targetPrice = lowestSell - 0.01;
                     if (targetPrice <= 0) continue;
 
                     const isLiquidated = isItemLiquidated(market);
-                    const basisOk = isLiquidated
-                        ? true
-                        : (basis !== undefined && targetPrice * 0.85 - basis >= MIN_PROFIT);
+                    let effectiveBasis = basis;
+                    let basisOk = false;
+
+                    if (isLiquidated) {
+                        basisOk = true;
+                    } else if (effectiveBasis !== undefined) {
+                        if (targetPrice * 0.85 - effectiveBasis >= MIN_PROFIT) {
+                            basisOk = true;
+                        } else {
+                            // Current top price is slightly below MIN_PROFIT.
+                            // Instead of leaving the item unlisted and idle in inventory:
+                            // List at the safe breakeven price that covers cost basis (+0.01 GJN)!
+                            const safePrice = Number(((effectiveBasis + 0.01) / 0.85).toFixed(2));
+                            targetPrice = Math.max(targetPrice, safePrice);
+                            basisOk = true;
+                            console.log(`[Auto-Lister] ℹ️ Listing ${market} at safe price ${targetPrice.toFixed(2)} GJN (Basis: ${effectiveBasis.toFixed(2)} GJN) to enter queue and prevent idle inventory.`);
+                        }
+                    } else {
+                        // Orphan item without basis (e.g. from chest/trophy drop)
+                        if (lowestSell <= 0.50) {
+                            console.log(`[Auto-Lister] ℹ️ Listing low-value orphan ${market} at ${targetPrice.toFixed(2)} GJN (LowestSell <= 0.50).`);
+                            basisOk = true;
+                        } else {
+                            // High-value orphan: auto-adopt by assigning fair market basis (highest bid or 80% of lowest sell)
+                            // so it enters active market management instead of sitting permanently frozen!
+                            const autoAssignedBasis = Number((Math.min(highestBid, lowestSell * 0.80) || 1.00).toFixed(2));
+                            addBasis(market, autoAssignedBasis);
+                            effectiveBasis = autoAssignedBasis;
+                            basisOk = true;
+                            console.log(`[Auto-Lister] 🚀 Auto-adopting high-value orphan ${market}: Assigned basis ${autoAssignedBasis.toFixed(2)} GJN. Listing at ${targetPrice.toFixed(2)} GJN.`);
+                        }
+                    }
 
                     if (basisOk) {
                         const assetId = idleItems[i].assetId;
+                        if (failedAssetCooldown.get(assetId) && failedAssetCooldown.get(assetId)! > Date.now()) {
+                            continue;
+                        }
                         console.log(`[Auto-Lister] Listing ${market} from inventory! Target Price: ${targetPrice.toFixed(2)}, Basis: ${basis ?? 'yok'}`);
                         const price = Math.round(targetPrice * 10000);
-                        await post({
+                        const sellRes = await post({
                             action: "cln_market_sell",
                             token: process.env.SELLTOKEN || token,
-                            transactid: Math.round(Math.random() * 100000),
-                            reqstamp: Date.now(),
                             appid: 1067,
                             contextid: 1,
                             assetid: assetId,
@@ -565,6 +726,10 @@ const checkStandingOrders = async () => {
                             market_name: market,
                             privateMode: true
                         });
+                        if (sellRes?.response?.error) {
+                            failedAssetCooldown.set(assetId, Date.now() + 3600_000);
+                            console.warn(`[Auto-Lister] Listing ${market} failed (${sellRes.response.error}). Cooldown set for 1h.`);
+                        }
                     }
                 }
             }
@@ -574,13 +739,90 @@ const checkStandingOrders = async () => {
     }
 }
 
+/**
+ * Automates initial BUY order placement for any active Target Buy items
+ * that don't currently have an open BUY order.
+ */
+async function checkAndPlaceTargetBuys(activeOrdersTracker: any[]) {
+    const activeTargets = getTargetBuys().filter(tb => tb.active);
+    if (activeTargets.length === 0) return;
+
+    for (const tb of activeTargets) {
+        const hasOpenBuy = activeOrdersTracker.some(o => o.type === "BUY" && o.market === tb.market_name);
+        if (hasOpenBuy) continue;
+
+        try {
+            const books = await post({
+                action: "cln_books_brief",
+                market_name: tb.market_name,
+                appid: 1067,
+                token
+            });
+
+            if (!books?.response?.BUY) continue;
+
+            const highestCompetitorBid = (books.response.BUY[0]?.[0] || 0) / 10000;
+            const targetBid = Number((highestCompetitorBid + 0.01).toFixed(2));
+
+            if (targetBid > tb.max_price) {
+                console.warn(`[TARGET-BUY] Initial bid for ${tb.market_name} (${targetBid.toFixed(2)} GJN) exceeds max price (${tb.max_price.toFixed(2)} GJN).`);
+                continue;
+            }
+
+            const rawWallet = await getWalletBalance();
+            if (rawWallet !== null && rawWallet < targetBid) {
+                console.warn(`[TARGET-BUY] Cannot place initial BUY for ${tb.market_name}: Wallet cash (${rawWallet.toFixed(2)} GJN) < required (${targetBid.toFixed(2)} GJN).`);
+                continue;
+            }
+
+            const priceToSet = Math.round(targetBid * 10000);
+            console.log(`[TARGET-BUY] Placing initial TOP BID for ${tb.market_name} at ${targetBid.toFixed(2)} GJN (Max budget: ${tb.max_price.toFixed(2)} GJN)...`);
+
+            const buyParams: any = {
+                action: "cln_market_buy",
+                price: priceToSet,
+                privateMode: true,
+                appid: 1067,
+                market_name: tb.market_name,
+                currencyid: "gjn",
+                amount: 1,
+                token
+            };
+
+            const res = await post(buyParams);
+            if (res?.response?.success) {
+                const newOrderId = res.response.orderId?.toString() || `pending_${Date.now()}`;
+                const pairId = res.response.pairId?.toString() || '';
+                activeOrdersTracker.push({
+                    id: newOrderId,
+                    pairId,
+                    type: "BUY",
+                    market: tb.market_name,
+                    localPrice: priceToSet
+                });
+                db.prepare('INSERT OR REPLACE INTO Orders (id, pairId, market, type, localPrice) VALUES (?, ?, ?, ?, ?)').run(
+                    newOrderId,
+                    pairId,
+                    tb.market_name,
+                    'BUY',
+                    priceToSet
+                );
+                console.log(`[TARGET-BUY] ✅ Successfully placed initial TOP BID for ${tb.market_name} at ${targetBid.toFixed(2)} GJN!`);
+            } else {
+                console.error(`[TARGET-BUY] ❌ Failed to place initial BUY for ${tb.market_name}:`, res?.response?.error || res?.error || res);
+            }
+        } catch (err) {
+            console.error(`[TARGET-BUY] Error in checkAndPlaceTargetBuys for ${tb.market_name}:`, err);
+        }
+    }
+}
+
 export function startGuardLoop() {
     console.log("[GUARD] Guard service started (Standing Orders & Auto-Lister active).");
     checkStandingOrders();
 
     function scheduleNextRun() {
-        const x = 3;
-        const delaySec = Math.floor(Math.random() * (x - 1 + 1)) + 1; // 1-3s
+        const delaySec = Math.floor(Math.random() * 5) + 6; // 6-10s
         const delayMs = delaySec * 1000;
 
         setTimeout(async () => {

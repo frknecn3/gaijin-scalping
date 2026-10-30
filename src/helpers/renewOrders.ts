@@ -35,7 +35,8 @@ export async function startRenewOrders(jobState: JobState, isHardRefresh: boolea
                 headers: {
                     "content-type": "application/x-www-form-urlencoded"
                 },
-                body
+                body,
+                signal: AbortSignal.timeout(15000)
             });
 
             const json = await res.json();
