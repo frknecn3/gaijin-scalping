@@ -637,11 +637,6 @@ const checkStandingOrders = async () => {
         for (const market in invByMarket) {
             if (ignore.includes(market)) continue;
 
-            // Skip commodity trophies / crates with zero profit potential that trigger WRONG_PRICE spam
-            if (market.includes('trophy') || market.includes('chest') || market.includes('crate')) {
-                continue;
-            }
-
             // Target Buy items (e.g. KV-220) are personal purchases and MUST NOT be auto-sold!
             if (isAnyTargetBuy(market)) {
                 console.log(`[Auto-Lister] 🛡️ Target Buy item ${market} found in inventory! Keeping for user (will NOT auto-sell).`);
@@ -662,13 +657,26 @@ const checkStandingOrders = async () => {
                 });
 
                 if (!marketBooks?.response?.SELL || !marketBooks?.response?.BUY) continue;
-                const lowestSell = marketBooks.response.SELL[0]?.[0] / 10000;
-                const highestBid = marketBooks.response.BUY[0]?.[0] / 10000;
+                const lowestSell = (marketBooks.response.SELL[0]?.[0] || 0) / 10000;
+                const highestBid = (marketBooks.response.BUY[0]?.[0] || 0) / 10000;
+
+                // Dead commodity floor protection:
+                // If lowestSell is <= 0.10 GJN (market floor), we cannot undercut to 0.09 without WRONG_PRICE.
+                // Skip dead floor commodity crates/items to avoid failed request spam!
+                if (lowestSell <= 0.10) {
+                    continue;
+                }
+
+                // Check if our bot is already the top seller for this market
+                const ourExistingSell = pendingItems.find(item => item.market === market && item.type === "SELL" && !isCancelled(item.id));
+                const ourSellPrice = ourExistingSell ? Number(ourExistingSell.localPrice) / 10000 : null;
+                const isTopSeller = ourSellPrice !== null && Math.abs(ourSellPrice - lowestSell) < 0.005;
+                const baseTargetPrice = isTopSeller ? ourSellPrice : Number((lowestSell - 0.01).toFixed(2));
 
                 for (let i = 0; i < idleItems.length; i++) {
                     const unassignedBaseIndex = activeSellOrdersCount + i;
                     const basis = availableBases[unassignedBaseIndex];
-                    let targetPrice = lowestSell - 0.01;
+                    let targetPrice = baseTargetPrice;
                     if (targetPrice <= 0) continue;
 
                     const isLiquidated = isItemLiquidated(market);
@@ -729,6 +737,13 @@ const checkStandingOrders = async () => {
                         if (sellRes?.response?.error) {
                             failedAssetCooldown.set(assetId, Date.now() + 3600_000);
                             console.warn(`[Auto-Lister] Listing ${market} failed (${sellRes.response.error}). Cooldown set for 1h.`);
+                        } else if (sellRes?.response?.success) {
+                            newSellOrdersCount[market] = (newSellOrdersCount[market] || 0) + 1;
+                            activeOrdersTracker.push({
+                                type: "SELL",
+                                market: market,
+                                localPrice: price
+                            });
                         }
                     }
                 }
