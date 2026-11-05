@@ -156,7 +156,9 @@ const ItemCard = ({ item }: Props) => {
                 <span>
                     selling at
                     <span className='text-2xl pt-5 text-red-600 ml-1'>
-                        {updatedVal?.sell ? (updatedVal.sell / 10000).toFixed(2) : item.price?.toFixed(2)} GJN
+                        {updatedVal?.sell 
+                            ? (updatedVal.sell / 10000).toFixed(2) 
+                            : (item.orgPrice ? (item.orgPrice / 100000000).toFixed(2) : ((item.price || 0) / 0.85).toFixed(2))} GJN
                     </span>
                 </span>
 
@@ -170,9 +172,11 @@ const ItemCard = ({ item }: Props) => {
                 <span>
                     net profit
                     <span className='text-2xl pt-5 text-green-400 ml-1'>
-                        {(Number(updatedVal?.sell ? (updatedVal.sell / 10000).toFixed(2) : item.price?.toFixed(2)) * 0.85
-                            -
-                            Number(updatedVal?.buy ? (updatedVal.buy / 10000).toFixed(2) : item.buy_price?.toFixed(2))).toFixed(2)} GJN
+                        {updatedVal 
+                            ? (((updatedVal.sell / 10000) * 0.85) - (updatedVal.buy / 10000)).toFixed(2)
+                            : (typeof item.profit === 'number' 
+                                ? item.profit.toFixed(2) 
+                                : (((item.price || 0)) - (item.buy_price || 0)).toFixed(2))} GJN
                     </span>
                 </span>
 
