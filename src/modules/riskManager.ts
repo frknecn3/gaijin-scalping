@@ -122,6 +122,16 @@ export async function canBuyItem(marketName: string, estimatedPrice: number): Pr
         return { allowed: false, reason: 'max_price_exceeded' };
     }
 
+    // 1.8 Micro-Item Quota: Cap open buy orders under 1.00 GJN at 20 to prevent low-margin clutter
+    if (estimatedPrice < 1.00) {
+        const microBuyCount = db.prepare("SELECT COUNT(*) as c FROM Orders WHERE type = 'BUY' AND localPrice < 10000").get() as { c: number } | undefined;
+        const MAX_MICRO_BUYS = 20;
+        if (microBuyCount && microBuyCount.c >= MAX_MICRO_BUYS) {
+            console.log(`[RISK MANAGER] Micro-item (<1 GJN) quota reached (${microBuyCount.c}/${MAX_MICRO_BUYS}). Reserving order slots for higher-margin opportunities.`);
+            return { allowed: false, reason: 'micro_quota_reached' };
+        }
+    }
+
     // 2. Real-time Gaijin Wallet Balance Check & Bankroll Allocation Cap
     const liveBalance = await getWalletBalance();
     if (liveBalance !== null) {
@@ -131,11 +141,12 @@ export async function canBuyItem(marketName: string, estimatedPrice: number): Pr
             return { allowed: false, reason: 'budget_exceeded', availableBalance: liveBalance };
         }
 
-        // Single item bankroll percentage cap (prevent crippling cashflow)
+        // Single item bankroll percentage cap (calculated against total operating bankroll)
         if (settings.maxWalletPercentPerItem > 0) {
-            const maxAllowedForSingleItem = liveBalance * (settings.maxWalletPercentPerItem / 100);
+            const totalBankroll = Math.max(settings.operatingCapitalTarget || 180, liveBalance);
+            const maxAllowedForSingleItem = totalBankroll * (settings.maxWalletPercentPerItem / 100);
             if (estimatedPrice > maxAllowedForSingleItem) {
-                console.warn(`[RISK MANAGER] Blocked buy for ${marketName}: Price (${estimatedPrice.toFixed(2)} GJN) exceeds ${settings.maxWalletPercentPerItem}% of wallet (${maxAllowedForSingleItem.toFixed(2)} GJN).`);
+                console.warn(`[RISK MANAGER] Blocked buy for ${marketName}: Price (${estimatedPrice.toFixed(2)} GJN) exceeds ${settings.maxWalletPercentPerItem}% of total bankroll (${maxAllowedForSingleItem.toFixed(2)} GJN).`);
                 return { allowed: false, reason: 'bankroll_risk', availableBalance: liveBalance };
             }
         }
