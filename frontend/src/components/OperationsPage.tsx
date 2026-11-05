@@ -70,6 +70,35 @@ const OperationsPage: React.FC<Props> = ({ onBackToDashboard }) => {
     const [lastRefreshed, setLastRefreshed] = useState<string>('');
     const [actionLoading, setActionLoading] = useState<string | null>(null);
 
+    // Sorting states
+    type SellSortKey = 'name' | 'listedPrice' | 'basis' | 'netRevenue' | 'potentialProfit' | 'roiPercent' | 'durationHours';
+    type BuySortKey = 'name' | 'bidPrice' | 'marketHighestBuy' | 'targetSellPrice' | 'projectedNetProfit' | 'projectedRoiPercent' | 'durationMinutes';
+    type SortOrder = 'asc' | 'desc';
+
+    const [sellSortKey, setSellSortKey] = useState<SellSortKey>('durationHours');
+    const [sellSortOrder, setSellSortOrder] = useState<SortOrder>('desc');
+
+    const [buySortKey, setBuySortKey] = useState<BuySortKey>('bidPrice');
+    const [buySortOrder, setBuySortOrder] = useState<SortOrder>('desc');
+
+    const handleSellSort = (key: SellSortKey) => {
+        if (sellSortKey === key) {
+            setSellSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
+        } else {
+            setSellSortKey(key);
+            setSellSortOrder('desc');
+        }
+    };
+
+    const handleBuySort = (key: BuySortKey) => {
+        if (buySortKey === key) {
+            setBuySortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
+        } else {
+            setBuySortKey(key);
+            setBuySortOrder('desc');
+        }
+    };
+
     const fetchOperations = async () => {
         try {
             const res = await axios.get<OperationsResponse>(`/api/operations?_t=${Date.now()}`);
@@ -120,7 +149,7 @@ const OperationsPage: React.FC<Props> = ({ onBackToDashboard }) => {
 
     const filteredSells = useMemo(() => {
         if (!data?.sells) return [];
-        return data.sells.filter(s => {
+        const list = data.sells.filter(s => {
             const matchesQuery = s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.market.toLowerCase().includes(searchQuery.toLowerCase());
             if (!matchesQuery) return false;
             if (statusFilter === 'ALL') return true;
@@ -129,14 +158,50 @@ const OperationsPage: React.FC<Props> = ({ onBackToDashboard }) => {
             if (statusFilter === 'LIQUIDATING') return s.isLiquidated;
             return true;
         });
-    }, [data?.sells, searchQuery, statusFilter]);
+
+        return list.sort((a, b) => {
+            if (sellSortKey === 'name') {
+                const cmp = a.name.localeCompare(b.name);
+                return sellSortOrder === 'asc' ? cmp : -cmp;
+            }
+
+            let valA: any = a[sellSortKey];
+            let valB: any = b[sellSortKey];
+
+            const nullVal = sellSortOrder === 'asc' ? Infinity : -Infinity;
+            valA = (valA !== null && valA !== undefined) ? valA : nullVal;
+            valB = (valB !== null && valB !== undefined) ? valB : nullVal;
+
+            if (valA < valB) return sellSortOrder === 'asc' ? -1 : 1;
+            if (valA > valB) return sellSortOrder === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }, [data?.sells, searchQuery, statusFilter, sellSortKey, sellSortOrder]);
 
     const filteredBuys = useMemo(() => {
         if (!data?.buys) return [];
-        return data.buys.filter(b => {
+        const list = data.buys.filter(b => {
             return b.name.toLowerCase().includes(searchQuery.toLowerCase()) || b.market.toLowerCase().includes(searchQuery.toLowerCase());
         });
-    }, [data?.buys, searchQuery]);
+
+        return list.sort((a, b) => {
+            if (buySortKey === 'name') {
+                const cmp = a.name.localeCompare(b.name);
+                return buySortOrder === 'asc' ? cmp : -cmp;
+            }
+
+            let valA: any = a[buySortKey];
+            let valB: any = b[buySortKey];
+
+            const nullVal = buySortOrder === 'asc' ? Infinity : -Infinity;
+            valA = (valA !== null && valA !== undefined) ? valA : nullVal;
+            valB = (valB !== null && valB !== undefined) ? valB : nullVal;
+
+            if (valA < valB) return buySortOrder === 'asc' ? -1 : 1;
+            if (valA > valB) return buySortOrder === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }, [data?.buys, searchQuery, buySortKey, buySortOrder]);
 
     const summary = data?.summary;
 
@@ -324,6 +389,58 @@ const OperationsPage: React.FC<Props> = ({ onBackToDashboard }) => {
                         </div>
                     )}
 
+                    {/* Quick Sort Dropdown */}
+                    {activeTab === 'sells' ? (
+                        <div className="flex items-center gap-1.5 bg-[#181c24] px-2.5 py-1.5 rounded-lg border border-[#262c3b] text-xs">
+                            <span className="text-gray-400 font-medium flex items-center gap-1">
+                                <span>⇅</span> Sırala:
+                            </span>
+                            <select
+                                value={`${sellSortKey}:${sellSortOrder}`}
+                                onChange={e => {
+                                    const [key, order] = e.target.value.split(':');
+                                    setSellSortKey(key as SellSortKey);
+                                    setSellSortOrder(order as SortOrder);
+                                }}
+                                className="bg-transparent text-cyan-300 font-semibold focus:outline-none cursor-pointer"
+                            >
+                                <option value="durationHours:desc" className="bg-[#181c24] text-white">⏳ En Uzun Süre Satılmayanlar</option>
+                                <option value="durationHours:asc" className="bg-[#181c24] text-white">⏱️ En Yeni Satış İlanları</option>
+                                <option value="potentialProfit:desc" className="bg-[#181c24] text-white">💰 En Çok Kâr Getirenler</option>
+                                <option value="potentialProfit:asc" className="bg-[#181c24] text-white">📉 En Düşük Kâr / Zarar</option>
+                                <option value="listedPrice:desc" className="bg-[#181c24] text-white">💎 En Pahalı Satış Fiyatı</option>
+                                <option value="listedPrice:asc" className="bg-[#181c24] text-white">🪙 En Ucuz Satış Fiyatı</option>
+                                <option value="roiPercent:desc" className="bg-[#181c24] text-white">🎯 En Yüksek ROI %</option>
+                                <option value="basis:desc" className="bg-[#181c24] text-white">🏷️ En Yüksek Maliyet</option>
+                                <option value="name:asc" className="bg-[#181c24] text-white">🔤 İsim (A-Z)</option>
+                            </select>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-1.5 bg-[#181c24] px-2.5 py-1.5 rounded-lg border border-[#262c3b] text-xs">
+                            <span className="text-gray-400 font-medium flex items-center gap-1">
+                                <span>⇅</span> Sırala:
+                            </span>
+                            <select
+                                value={`${buySortKey}:${buySortOrder}`}
+                                onChange={e => {
+                                    const [key, order] = e.target.value.split(':');
+                                    setBuySortKey(key as BuySortKey);
+                                    setBuySortOrder(order as SortOrder);
+                                }}
+                                className="bg-transparent text-purple-300 font-semibold focus:outline-none cursor-pointer"
+                            >
+                                <option value="bidPrice:desc" className="bg-[#181c24] text-white">💎 En Pahalı Alış Fiyatı</option>
+                                <option value="bidPrice:asc" className="bg-[#181c24] text-white">🪙 En Ucuz Alış Fiyatı</option>
+                                <option value="projectedNetProfit:desc" className="bg-[#181c24] text-white">💰 En Çok Hedef Kâr</option>
+                                <option value="projectedNetProfit:asc" className="bg-[#181c24] text-white">📉 En Düşük Hedef Kâr</option>
+                                <option value="projectedRoiPercent:desc" className="bg-[#181c24] text-white">🎯 En Yüksek Hedef ROI %</option>
+                                <option value="durationMinutes:desc" className="bg-[#181c24] text-white">⏳ En Uzun Süre Bekleyen Alışlar</option>
+                                <option value="durationMinutes:asc" className="bg-[#181c24] text-white">⏱️ En Yeni Alış Emirleri</option>
+                                <option value="name:asc" className="bg-[#181c24] text-white">🔤 İsim (A-Z)</option>
+                            </select>
+                        </div>
+                    )}
+
                     <div className="relative">
                         <input
                             type="text"
@@ -356,16 +473,86 @@ const OperationsPage: React.FC<Props> = ({ onBackToDashboard }) => {
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs border-collapse">
                             <thead>
-                                <tr className="border-b border-[#262c3b] bg-[#181c24] text-gray-400 font-semibold uppercase tracking-wider">
-                                    <th className="py-3 px-4">Eşya & Bilgi</th>
+                                <tr className="border-b border-[#262c3b] bg-[#181c24] text-gray-400 font-semibold uppercase tracking-wider text-[11px]">
+                                    <th
+                                        onClick={() => handleSellSort('name')}
+                                        className="py-3 px-4 cursor-pointer hover:text-cyan-300 transition select-none group"
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <span>Eşya & Bilgi</span>
+                                            <span className={`text-[10px] ${sellSortKey === 'name' ? 'text-cyan-400 font-bold' : 'text-gray-600 group-hover:text-gray-400'}`}>
+                                                {sellSortKey === 'name' ? (sellSortOrder === 'desc' ? '▼' : '▲') : '⇅'}
+                                            </span>
+                                        </div>
+                                    </th>
                                     <th className="py-3 px-3">Durum</th>
-                                    <th className="py-3 px-3">Satış Fiyatımız</th>
-                                    <th className="py-3 px-3">Alış Maliyeti</th>
-                                    <th className="py-3 px-3">Net Gelir (-%15)</th>
-                                    <th className="py-3 px-3">Beklenen Kâr</th>
-                                    <th className="py-3 px-3">Beklenen ROI</th>
+                                    <th
+                                        onClick={() => handleSellSort('listedPrice')}
+                                        className="py-3 px-3 cursor-pointer hover:text-cyan-300 transition select-none group"
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <span>Satış Fiyatımız</span>
+                                            <span className={`text-[10px] ${sellSortKey === 'listedPrice' ? 'text-cyan-400 font-bold' : 'text-gray-600 group-hover:text-gray-400'}`}>
+                                                {sellSortKey === 'listedPrice' ? (sellSortOrder === 'desc' ? '▼' : '▲') : '⇅'}
+                                            </span>
+                                        </div>
+                                    </th>
+                                    <th
+                                        onClick={() => handleSellSort('basis')}
+                                        className="py-3 px-3 cursor-pointer hover:text-cyan-300 transition select-none group"
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <span>Alış Maliyeti</span>
+                                            <span className={`text-[10px] ${sellSortKey === 'basis' ? 'text-cyan-400 font-bold' : 'text-gray-600 group-hover:text-gray-400'}`}>
+                                                {sellSortKey === 'basis' ? (sellSortOrder === 'desc' ? '▼' : '▲') : '⇅'}
+                                            </span>
+                                        </div>
+                                    </th>
+                                    <th
+                                        onClick={() => handleSellSort('netRevenue')}
+                                        className="py-3 px-3 cursor-pointer hover:text-cyan-300 transition select-none group"
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <span>Net Gelir (-%15)</span>
+                                            <span className={`text-[10px] ${sellSortKey === 'netRevenue' ? 'text-cyan-400 font-bold' : 'text-gray-600 group-hover:text-gray-400'}`}>
+                                                {sellSortKey === 'netRevenue' ? (sellSortOrder === 'desc' ? '▼' : '▲') : '⇅'}
+                                            </span>
+                                        </div>
+                                    </th>
+                                    <th
+                                        onClick={() => handleSellSort('potentialProfit')}
+                                        className="py-3 px-3 cursor-pointer hover:text-cyan-300 transition select-none group"
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <span>Beklenen Kâr</span>
+                                            <span className={`text-[10px] ${sellSortKey === 'potentialProfit' ? 'text-cyan-400 font-bold' : 'text-gray-600 group-hover:text-gray-400'}`}>
+                                                {sellSortKey === 'potentialProfit' ? (sellSortOrder === 'desc' ? '▼' : '▲') : '⇅'}
+                                            </span>
+                                        </div>
+                                    </th>
+                                    <th
+                                        onClick={() => handleSellSort('roiPercent')}
+                                        className="py-3 px-3 cursor-pointer hover:text-cyan-300 transition select-none group"
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <span>Beklenen ROI</span>
+                                            <span className={`text-[10px] ${sellSortKey === 'roiPercent' ? 'text-cyan-400 font-bold' : 'text-gray-600 group-hover:text-gray-400'}`}>
+                                                {sellSortKey === 'roiPercent' ? (sellSortOrder === 'desc' ? '▼' : '▲') : '⇅'}
+                                            </span>
+                                        </div>
+                                    </th>
                                     <th className="py-3 px-3">Tahta (Ask / Bid)</th>
-                                    <th className="py-3 px-3">İlan Süresi</th>
+                                    <th
+                                        onClick={() => handleSellSort('durationHours')}
+                                        className="py-3 px-3 cursor-pointer hover:text-cyan-300 transition select-none group"
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <span>İlan Süresi</span>
+                                            <span className={`text-[10px] ${sellSortKey === 'durationHours' ? 'text-cyan-400 font-bold' : 'text-gray-600 group-hover:text-gray-400'}`}>
+                                                {sellSortKey === 'durationHours' ? (sellSortOrder === 'desc' ? '▼' : '▲') : '⇅'}
+                                            </span>
+                                        </div>
+                                    </th>
                                     <th className="py-3 px-4 text-right">İşlemler</th>
                                 </tr>
                             </thead>
@@ -551,15 +738,85 @@ const OperationsPage: React.FC<Props> = ({ onBackToDashboard }) => {
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs border-collapse">
                             <thead>
-                                <tr className="border-b border-[#262c3b] bg-[#181c24] text-gray-400 font-semibold uppercase tracking-wider">
-                                    <th className="py-3 px-4">Eşya & Bilgi</th>
+                                <tr className="border-b border-[#262c3b] bg-[#181c24] text-gray-400 font-semibold uppercase tracking-wider text-[11px]">
+                                    <th
+                                        onClick={() => handleBuySort('name')}
+                                        className="py-3 px-4 cursor-pointer hover:text-purple-300 transition select-none group"
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <span>Eşya & Bilgi</span>
+                                            <span className={`text-[10px] ${buySortKey === 'name' ? 'text-purple-400 font-bold' : 'text-gray-600 group-hover:text-gray-400'}`}>
+                                                {buySortKey === 'name' ? (buySortOrder === 'desc' ? '▼' : '▲') : '⇅'}
+                                            </span>
+                                        </div>
+                                    </th>
                                     <th className="py-3 px-3">Teklif Durumu</th>
-                                    <th className="py-3 px-3">Alış Teklifimiz</th>
-                                    <th className="py-3 px-3">Tahtanın En Yüksek Alışı</th>
-                                    <th className="py-3 px-3">Hedef Satış Fiyatı</th>
-                                    <th className="py-3 px-3">Hedef Net Kâr</th>
-                                    <th className="py-3 px-3">Hedef ROI %</th>
-                                    <th className="py-3 px-3">Emir Süresi</th>
+                                    <th
+                                        onClick={() => handleBuySort('bidPrice')}
+                                        className="py-3 px-3 cursor-pointer hover:text-purple-300 transition select-none group"
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <span>Alış Teklifimiz</span>
+                                            <span className={`text-[10px] ${buySortKey === 'bidPrice' ? 'text-purple-400 font-bold' : 'text-gray-600 group-hover:text-gray-400'}`}>
+                                                {buySortKey === 'bidPrice' ? (buySortOrder === 'desc' ? '▼' : '▲') : '⇅'}
+                                            </span>
+                                        </div>
+                                    </th>
+                                    <th
+                                        onClick={() => handleBuySort('marketHighestBuy')}
+                                        className="py-3 px-3 cursor-pointer hover:text-purple-300 transition select-none group"
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <span>Tahtanın En Yüksek Alışı</span>
+                                            <span className={`text-[10px] ${buySortKey === 'marketHighestBuy' ? 'text-purple-400 font-bold' : 'text-gray-600 group-hover:text-gray-400'}`}>
+                                                {buySortKey === 'marketHighestBuy' ? (buySortOrder === 'desc' ? '▼' : '▲') : '⇅'}
+                                            </span>
+                                        </div>
+                                    </th>
+                                    <th
+                                        onClick={() => handleBuySort('targetSellPrice')}
+                                        className="py-3 px-3 cursor-pointer hover:text-purple-300 transition select-none group"
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <span>Hedef Satış Fiyatı</span>
+                                            <span className={`text-[10px] ${buySortKey === 'targetSellPrice' ? 'text-purple-400 font-bold' : 'text-gray-600 group-hover:text-gray-400'}`}>
+                                                {buySortKey === 'targetSellPrice' ? (buySortOrder === 'desc' ? '▼' : '▲') : '⇅'}
+                                            </span>
+                                        </div>
+                                    </th>
+                                    <th
+                                        onClick={() => handleBuySort('projectedNetProfit')}
+                                        className="py-3 px-3 cursor-pointer hover:text-purple-300 transition select-none group"
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <span>Hedef Net Kâr</span>
+                                            <span className={`text-[10px] ${buySortKey === 'projectedNetProfit' ? 'text-purple-400 font-bold' : 'text-gray-600 group-hover:text-gray-400'}`}>
+                                                {buySortKey === 'projectedNetProfit' ? (buySortOrder === 'desc' ? '▼' : '▲') : '⇅'}
+                                            </span>
+                                        </div>
+                                    </th>
+                                    <th
+                                        onClick={() => handleBuySort('projectedRoiPercent')}
+                                        className="py-3 px-3 cursor-pointer hover:text-purple-300 transition select-none group"
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <span>Hedef ROI %</span>
+                                            <span className={`text-[10px] ${buySortKey === 'projectedRoiPercent' ? 'text-purple-400 font-bold' : 'text-gray-600 group-hover:text-gray-400'}`}>
+                                                {buySortKey === 'projectedRoiPercent' ? (buySortOrder === 'desc' ? '▼' : '▲') : '⇅'}
+                                            </span>
+                                        </div>
+                                    </th>
+                                    <th
+                                        onClick={() => handleBuySort('durationMinutes')}
+                                        className="py-3 px-3 cursor-pointer hover:text-purple-300 transition select-none group"
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <span>Emir Süresi</span>
+                                            <span className={`text-[10px] ${buySortKey === 'durationMinutes' ? 'text-purple-400 font-bold' : 'text-gray-600 group-hover:text-gray-400'}`}>
+                                                {buySortKey === 'durationMinutes' ? (buySortOrder === 'desc' ? '▼' : '▲') : '⇅'}
+                                            </span>
+                                        </div>
+                                    </th>
                                     <th className="py-3 px-4 text-right">Pazar Linki</th>
                                 </tr>
                             </thead>
