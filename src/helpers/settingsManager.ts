@@ -75,6 +75,8 @@ export interface BotSettings {
     enableSelling: boolean;              // Master switch for automated SELL order updates & undercuts
     operatingCapitalTarget: number;      // Minimum total capital required to run bot without bottleneck (default: 75.00 GJN)
     externalSpentGJN: number;            // Total GJN spent externally on Gaijin Store / in-game (default: 116.00 GJN)
+    microQuotaLimit: number;             // Base quota for open buy orders < 1.00 GJN (default: 20)
+    enableDynamicMicroQuota: boolean;    // Smart dynamic mode: expands micro quota when overall book has idle slots (default: true)
 }
 
 const DEFAULT_SETTINGS: BotSettings = {
@@ -107,7 +109,9 @@ const DEFAULT_SETTINGS: BotSettings = {
     enableBuying: true,
     enableSelling: true,
     operatingCapitalTarget: 75.00,
-    externalSpentGJN: 116.00
+    externalSpentGJN: 116.00,
+    microQuotaLimit: 20,
+    enableDynamicMicroQuota: true
 };
 
 export function getBotSettings(): BotSettings {
@@ -153,6 +157,8 @@ export function getBotSettings(): BotSettings {
             enableSelling: typeof map.enableSelling === 'boolean' ? map.enableSelling : DEFAULT_SETTINGS.enableSelling,
             operatingCapitalTarget: typeof map.operatingCapitalTarget === 'number' ? map.operatingCapitalTarget : DEFAULT_SETTINGS.operatingCapitalTarget,
             externalSpentGJN: typeof map.externalSpentGJN === 'number' ? map.externalSpentGJN : DEFAULT_SETTINGS.externalSpentGJN,
+            microQuotaLimit: typeof map.microQuotaLimit === 'number' ? map.microQuotaLimit : DEFAULT_SETTINGS.microQuotaLimit,
+            enableDynamicMicroQuota: typeof map.enableDynamicMicroQuota === 'boolean' ? map.enableDynamicMicroQuota : DEFAULT_SETTINGS.enableDynamicMicroQuota,
         };
     } catch (e) {
         console.error("[SETTINGS] Error reading settings from DB, using defaults:", e);
@@ -193,6 +199,8 @@ export function updateBotSettings(partial: Partial<BotSettings>): BotSettings {
         enableSelling: partial.enableSelling !== undefined ? Boolean(partial.enableSelling) : current.enableSelling,
         operatingCapitalTarget: partial.operatingCapitalTarget !== undefined ? Number(partial.operatingCapitalTarget) : current.operatingCapitalTarget,
         externalSpentGJN: partial.externalSpentGJN !== undefined ? Number(partial.externalSpentGJN) : current.externalSpentGJN,
+        microQuotaLimit: partial.microQuotaLimit !== undefined ? Number(partial.microQuotaLimit) : current.microQuotaLimit,
+        enableDynamicMicroQuota: partial.enableDynamicMicroQuota !== undefined ? Boolean(partial.enableDynamicMicroQuota) : current.enableDynamicMicroQuota,
     };
 
     const stmt = db.prepare('INSERT OR REPLACE INTO Settings (key, value) VALUES (?, ?)');

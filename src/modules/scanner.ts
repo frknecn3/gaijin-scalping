@@ -1,6 +1,6 @@
 import db from '../db/database.js';
 import { canBuyItem, acquireBuyLock, releaseBuyLock, isBuyLocked } from './riskManager.js';
-import { post, marketPost, getPairStat, calculateLiquidityScore } from '../helpers/helpers.js';
+import { post, marketPost, getPairStat, calculateLiquidityScore, getWalletBalance } from '../helpers/helpers.js';
 import { syncOpenOrders } from '../helpers/orderSync.js';
 import { getBotSettings, isItemLiquidated, isItemIgnored, isTargetBuy, getMatchingTierRule } from '../helpers/settingsManager.js';
 import dotenv from 'dotenv';
@@ -341,37 +341,55 @@ async function attemptBudgetReallocation(newMarketName: string, newPrice: number
     // Sort by score ascending (worst opportunities first)
     activeOrdersScored.sort((a, b) => a.score - b.score);
 
-    const worstOrder = activeOrdersScored[0];
-
-    // If the worst active order is still better or equal to the new one, don't reallocate
-    if (worstOrder.score >= newScore) {
-        console.log(`[SCANNER] Reallocation denied: The worst active order (${worstOrder.market} with score ${worstOrder.score.toFixed(2)}) is still better than the new opportunity (${newScore.toFixed(2)}).`);
+    // Filter orders that are strictly worse than the new opportunity
+    const inferiorOrders = activeOrdersScored.filter(o => o.score < newScore);
+    if (inferiorOrders.length === 0) {
+        console.log(`[SCANNER] Reallocation denied: The worst active order (${activeOrdersScored[0].market} with score ${activeOrdersScored[0].score.toFixed(2)}) is still better or equal to the new opportunity (${newScore.toFixed(2)}).`);
         return false;
     }
 
-    // We found an inferior order to cancel!
-    console.log(`[SCANNER] REALLOCATION TRIGGERED: Cancelling ${worstOrder.market} (Score: ${worstOrder.score.toFixed(2)}) to afford ${newMarketName} (Score: ${newScore.toFixed(2)})`);
+    const liveBalance = await getWalletBalance() || 0;
+    const deficit = Math.max(0, newPrice - liveBalance);
 
-    // Cancel the order via API
-    const res = await marketPost({
-        action: "cancel_order",
-        pairId: worstOrder.pairId,
-        orderId: worstOrder.id,
-        token: process.env.TOKEN
-    });
+    let freedAmount = 0;
+    let cancelledCount = 0;
+    const MAX_CANCELLATIONS = 5;
 
-    if (res?.response?.success) {
-        console.log(`[SCANNER] Successfully cancelled ${worstOrder.market}.`);
+    for (const order of inferiorOrders) {
+        if (freedAmount >= deficit && cancelledCount > 0) {
+            break;
+        }
+        if (cancelledCount >= MAX_CANCELLATIONS) {
+            break;
+        }
 
-        // Log to CancelledOrders so guard.ts ignores it
-        db.prepare('INSERT INTO CancelledOrders (id) VALUES (?)').run(worstOrder.id);
+        const orderValueGJN = (order.localPrice || 0) / 10000;
+        console.log(`[SCANNER] REALLOCATION TRIGGERED: Cancelling ${order.market} (Score: ${order.score.toFixed(2)}, Value: ${orderValueGJN.toFixed(2)} GJN) to afford ${newMarketName} (Score: ${newScore.toFixed(2)}, Target: ${newPrice.toFixed(2)} GJN, Deficit: ${deficit.toFixed(2)} GJN)`);
 
-        // Remove it from the local Orders table immediately so riskManager sees the freed budget
-        db.prepare('DELETE FROM Orders WHERE id = ?').run(worstOrder.id);
+        // Cancel the order via API
+        const res = await marketPost({
+            action: "cancel_order",
+            pairId: order.pairId,
+            orderId: order.id,
+            token: process.env.TOKEN
+        });
 
-        return true;
-    } else {
-        console.log(`[SCANNER] Failed to cancel ${worstOrder.market} for reallocation.`);
-        return false;
+        if (res?.response?.success) {
+            console.log(`[SCANNER] Successfully cancelled ${order.market}. Freed ~${orderValueGJN.toFixed(2)} GJN.`);
+
+            // Log to CancelledOrders so guard.ts ignores it
+            db.prepare('INSERT INTO CancelledOrders (id) VALUES (?)').run(order.id);
+
+            // Remove it from the local Orders table immediately so riskManager sees the freed budget
+            db.prepare('DELETE FROM Orders WHERE id = ?').run(order.id);
+
+            freedAmount += orderValueGJN;
+            cancelledCount++;
+            await new Promise(r => setTimeout(r, 250));
+        } else {
+            console.log(`[SCANNER] Failed to cancel ${order.market} for reallocation.`);
+        }
     }
+
+    return cancelledCount > 0;
 }

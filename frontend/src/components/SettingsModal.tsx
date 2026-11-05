@@ -48,6 +48,8 @@ interface BotSettings {
     enableSelling?: boolean;
     operatingCapitalTarget?: number;
     externalSpentGJN?: number;
+    microQuotaLimit?: number;
+    enableDynamicMicroQuota?: boolean;
 }
 
 interface SettingsModalProps {
@@ -86,7 +88,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         enableBuying: true,
         enableSelling: true,
         operatingCapitalTarget: 75.0,
-        externalSpentGJN: 116.0
+        externalSpentGJN: 116.0,
+        microQuotaLimit: 20,
+        enableDynamicMicroQuota: true
     });
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -868,6 +872,59 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                                             className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500"
                                         />
                                         <span className="text-[11px] text-gray-500 block mt-1">Tek bir eşyanın güncel toplam bakiyenizden alabileceği azami oran (Örn: 20%).</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Section: Micro-Item Quota & Smart Dynamic Allocation */}
+                            <div className="bg-[#12161f] p-4 rounded-xl border border-[#262c3b] space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h3 className="text-sm font-semibold uppercase tracking-wider text-amber-400 flex items-center gap-2">
+                                            ⚡ Mikro Ürün (&lt; 1.00 GJN) Kotası &amp; Akıllı Dinamik Mod
+                                        </h3>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            1.00 GJN altındaki düşük marjlı ürünlerin emir slotlarını ve sermayeyi tıkamasını engeller.
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSettings({ ...settings, enableDynamicMicroQuota: !(settings.enableDynamicMicroQuota ?? true) })}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 border ${(settings.enableDynamicMicroQuota ?? true)
+                                            ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                                            : 'bg-[#1c222c] border-[#2e3646] text-gray-400'
+                                            }`}
+                                    >
+                                        <span>{(settings.enableDynamicMicroQuota ?? true) ? '🧠 Akıllı Dinamik Mod: AÇIK' : '⚪ Sabit Kota: AÇIK'}</span>
+                                    </button>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                                    <div>
+                                        <label className="block text-xs font-medium text-amber-300 mb-1">
+                                            Temel Mikro Ürün Kotası (Adet)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="1"
+                                            min="5"
+                                            max="60"
+                                            value={settings.microQuotaLimit ?? 20}
+                                            onChange={e => setSettings({ ...settings, microQuotaLimit: parseInt(e.target.value) || 20 })}
+                                            className="w-full bg-[#1c222c] border border-[#2e3646] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                                        />
+                                        <span className="text-[11px] text-gray-400 block mt-1">
+                                            Açık alış emirlerinde 1 GJN altındaki eşyalara ayrılacak taban slot sayısı (Varsayılan: 20).
+                                        </span>
+                                    </div>
+
+                                    <div className="bg-[#181e29] p-3 rounded-lg border border-[#2a3243] flex flex-col justify-center text-xs text-gray-300">
+                                        <span className="font-semibold text-white mb-1">🧠 Akıllı Dinamik Esneklik Nasıl Çalışır?</span>
+                                        <p className="text-[11px] text-gray-400 leading-relaxed">
+                                            {(settings.enableDynamicMicroQuota ?? true)
+                                                ? "Açık: Piyasada büyük fırsat azaldığında ve açık alış emirleri boş kaldığında (<45), kota otomatik 35'e kadar esner. Büyük fırsat geldiğinde ise bu emirler otomatik tasfiye edilip büyük fırsata bütçe açılır."
+                                                : "Kapalı: Kota her zaman kesin olarak belirlediğiniz taban adette sabit kalır."}
+                                        </p>
                                     </div>
                                 </div>
                             </div>

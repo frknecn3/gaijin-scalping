@@ -122,12 +122,22 @@ export async function canBuyItem(marketName: string, estimatedPrice: number): Pr
         return { allowed: false, reason: 'max_price_exceeded' };
     }
 
-    // 1.8 Micro-Item Quota: Cap open buy orders under 1.00 GJN at 20 to prevent low-margin clutter
+    // 1.8 Micro-Item Quota: Cap open buy orders under 1.00 GJN to prevent low-margin clutter
     if (estimatedPrice < 1.00) {
-        const microBuyCount = db.prepare("SELECT COUNT(*) as c FROM Orders WHERE type = 'BUY' AND localPrice < 10000").get() as { c: number } | undefined;
-        const MAX_MICRO_BUYS = 20;
-        if (microBuyCount && microBuyCount.c >= MAX_MICRO_BUYS) {
-            console.log(`[RISK MANAGER] Micro-item (<1 GJN) quota reached (${microBuyCount.c}/${MAX_MICRO_BUYS}). Reserving order slots for higher-margin opportunities.`);
+        const microBuyCount = (db.prepare("SELECT COUNT(*) as c FROM Orders WHERE type = 'BUY' AND localPrice < 10000").get() as { c: number } | undefined)?.c || 0;
+        const totalBuyCount = (db.prepare("SELECT COUNT(*) as c FROM Orders WHERE type = 'BUY'").get() as { c: number } | undefined)?.c || 0;
+
+        const baseLimit = typeof settings.microQuotaLimit === 'number' ? settings.microQuotaLimit : 20;
+        let effectiveLimit = baseLimit;
+
+        // Smart Dynamic Quota: If overall buy slots are underutilized (<45), allow micro-items to fill idle capacity up to 35
+        if (settings.enableDynamicMicroQuota && totalBuyCount < 45) {
+            const idleBonus = Math.max(0, 45 - totalBuyCount);
+            effectiveLimit = Math.min(35, baseLimit + idleBonus);
+        }
+
+        if (microBuyCount >= effectiveLimit) {
+            console.log(`[RISK MANAGER] Micro-item (<1 GJN) quota reached (${microBuyCount}/${effectiveLimit}${settings.enableDynamicMicroQuota ? ' [Dynamic]' : ''}, Total Buys: ${totalBuyCount}). Reserving order slots for higher-margin opportunities.`);
             return { allowed: false, reason: 'micro_quota_reached' };
         }
     }
